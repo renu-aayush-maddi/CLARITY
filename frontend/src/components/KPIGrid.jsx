@@ -8,7 +8,8 @@ export default function KPIGrid({ kpis, loading }) {
     { title: 'Total Subjects', value: data.total_subjects, icon: Users, color: 'blue' },
     { title: 'Protocol Deviations', value: data.total_pds, icon: AlertTriangle, color: 'orange' },
     { title: 'Missing Pages', value: data.total_missing_pages, icon: FileWarning, color: 'red' },
-    { title: 'Clean Patient Rate', value: data.clean_patient_rate, icon: Activity, color: 'green' },
+    // 👇 RENAMED TITLE ONLY
+    { title: 'Study Health (DQI)', value: data.clean_patient_rate, icon: Activity, color: 'green' },
   ];
 
   return (
