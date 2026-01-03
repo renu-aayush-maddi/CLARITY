@@ -10,6 +10,8 @@ python -m venv clarity
 
 
 
+
+
 pip install fastapi uvicorn sqlalchemy psycopg2-binary python-dotenv pandas
 
 

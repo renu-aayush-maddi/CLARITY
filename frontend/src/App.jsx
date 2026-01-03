@@ -1,225 +1,287 @@
-import { useState, useEffect } from 'react'
-import axios from 'axios'
+// App.jsx
+import { useState, useEffect } from 'react';
+import axios from 'axios';
+import '@mantine/core/styles.css'; 
 import { 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer 
-} from 'recharts'
-import { Activity, Users, AlertTriangle, FileWarning, Search } from 'lucide-react'
-import './App.css' // Ensure you have some basic CSS or remove this import
+  MantineProvider, AppShell, Burger, Group, 
+  Select, Button, FileButton, Text, Title, 
+  LoadingOverlay, ScrollArea, Avatar,
+  ThemeIcon, Paper, Stack 
+} from '@mantine/core';
+import { useDisclosure } from '@mantine/hooks';
+import { 
+  LayoutDashboard, Database, FileText, Settings, 
+  Upload, Activity, Search, FileText as FileIcon
+} from 'lucide-react';
 
-function App() {
-  const [study, setStudy] = useState("Study 1")
-  const [metrics, setMetrics] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
+// Import Custom Components
+import KPIGrid from './components/KPIGrid';
+import RiskChart from './components/RiskChart';
+import AgentPanel from './components/AgentPanel';
 
-// NEW: State for the AI Agent
-  const [emailDraft, setEmailDraft] = useState(null)
-  const [agentLoading, setAgentLoading] = useState(false)
+export default function App() {
+  return (
+    <MantineProvider>
+      <DashboardShell />
+    </MantineProvider>
+  );
+}
 
-  // Fetch data from your FastAPI Backend
-  useEffect(() => {
-    const fetchData = async () => {
-      setLoading(true)
-      try {
-        const response = await axios.get(`http://127.0.0.1:8000/api/analytics/dashboard-metrics?study=${study}`)
-        setMetrics(response.data)
-        setError(null)
-      } catch (err) {
-        console.error(err)
-        setError("Failed to connect to backend. Is it running?")
-      } finally {
-        setLoading(false)
-      }
+function DashboardShell() {
+  const [mobileOpened, { toggle: toggleMobile }] = useDisclosure();
+  const [desktopOpened, { toggle: toggleDesktop }] = useDisclosure(true);
+
+  // --- APP STATE ---
+  const [study, setStudy] = useState("Study 1");
+  const [metrics, setMetrics] = useState(null);
+  const [loading, setLoading] = useState(true); 
+  
+  // --- AGENT STATE ---
+  const [emailDraft, setEmailDraft] = useState(null);
+  const [agentLoading, setAgentLoading] = useState(false);
+
+  // --- UPLOAD STATE ---
+  const [isUploading, setIsUploading] = useState(false);
+  
+  // Custom Overlay State (Replaces Modal)
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState([]);
+  const [uploadStudy, setUploadStudy] = useState(study);
+
+  // --- 1. DATA FETCHING ---
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const response = await axios.get(`http://127.0.0.1:8000/api/analytics/dashboard-metrics?study=${study}`);
+      setMetrics(response.data);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setTimeout(() => setLoading(false), 500);
     }
-    fetchData()
-  }, [study])
+  };
 
+  useEffect(() => { fetchData(); setEmailDraft(null); }, [study]);
 
+  // --- 2. UPLOAD HANDLERS ---
+  const onFileSelect = (files) => {
+    if (files && files.length > 0) {
+        const fileArray = Array.from(files);
+        setSelectedFiles(fileArray);
+        setUploadStudy(study); // Sync with current view
+        setShowConfirm(true);  // Trigger the Custom Overlay
+    }
+  };
 
-// UPDATED: Handler for the Agent Button
+  const confirmUpload = async () => {
+    setIsUploading(true);
+    const formData = new FormData();
+    selectedFiles.forEach(file => formData.append("files", file));
+    formData.append("study_name", uploadStudy); 
+
+    try {
+        await axios.post("http://127.0.0.1:8000/api/upload", formData);
+        
+        // Success Actions
+        setShowConfirm(false); 
+        setSelectedFiles([]);
+        alert("✅ Ingestion Complete!");
+        fetchData(); 
+    } catch (err) {
+        alert("Upload Failed. Check Console.");
+        console.error(err);
+    } finally {
+        setIsUploading(false);
+    }
+  };
+
+  // --- 3. AGENT HANDLER ---
   const handleDraftEmail = async () => {
-    if (!metrics || !metrics.top_risky_sites.length) return;
-    
-    // FIX: Find the first site in the list that is NOT null
-    const validRiskEntry = metrics.top_risky_sites.find(item => item.site !== null);
-    
-    if (!validRiskEntry) {
-        alert("No valid site ID found to generate an email for.");
-        return;
-    }
+    const validRiskEntry = metrics?.top_risky_sites?.find(item => item.site !== null);
+    if (!validRiskEntry) return;
 
-    const riskySite = validRiskEntry.site;
-    
     setAgentLoading(true);
     try {
-      // Now we are guaranteed to send a string, not null
       const res = await axios.post(`http://127.0.0.1:8000/api/agent/draft-escalation`, {
-        site_id: riskySite,
+        site_id: validRiskEntry.site,
         study_name: study
       });
       setEmailDraft(res.data);
     } catch (err) {
-      alert("Error triggering agent: " + (err.response?.data?.detail || err.message));
-      console.error(err);
+      alert("Agent Error: " + err.message);
     } finally {
       setAgentLoading(false);
     }
   };
 
-  // Simple KPI Card Component
-  const KpiCard = ({ title, value, icon: Icon, color }) => (
-    <div style={{ 
-      background: 'white', padding: '20px', borderRadius: '12px', 
-      boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', flex: 1, minWidth: '200px'
-    }}>
-      <div style={{ display: 'flex', alignItems: 'center', marginBottom: '10px', color: '#64748b' }}>
-        <Icon size={20} style={{ marginRight: '8px' }} />
-        <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>{title}</span>
-      </div>
-      <div style={{ fontSize: '2rem', fontWeight: 'bold', color: color }}>{value}</div>
-    </div>
-  )
-
   return (
-    <div style={{ minHeight: '100vh', background: '#f8fafc', padding: '40px', fontFamily: 'sans-serif' }}>
+    <div style={{ position: 'relative', width: '100vw', height: '100vh' }}>
       
-      {/* HEADER */}
-      <header style={{ marginBottom: '40px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div>
-          <h1 style={{ margin: 0, color: '#0f172a' }}>🏥 Clarity AI Command Center</h1>
-          <p style={{ margin: '5px 0 0', color: '#64748b' }}>Real-time oversight for <strong>{study}</strong></p>
-        </div>
-        
-        {/* Study Selector */}
-        <select 
-          value={study} 
-          onChange={(e) => setStudy(e.target.value)}
-          style={{ padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '1rem' }}
-        >
-          <option value="Study 1">Study 1</option>
-          <option value="Study 2">Study 2</option>
-        </select>
-      </header>
-
-      {/* ERROR STATE */}
-      {error && (
-        <div style={{ padding: '15px', background: '#fee2e2', color: '#dc2626', borderRadius: '8px', marginBottom: '20px' }}>
-          ❌ {error}
-        </div>
-      )}
-
-      {/* LOADING STATE */}
-      {loading ? (
-        <div style={{ textAlign: 'center', marginTop: '50px' }}>Loading Metrics...</div>
-      ) : metrics && (
-        <>
-          {/* ROW 1: KPI CARDS */}
-          <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', marginBottom: '40px' }}>
-            <KpiCard 
-              title="Total Subjects" 
-              value={metrics.kpis.total_subjects} 
-              icon={Users} 
-              color="#3b82f6" 
-            />
-            <KpiCard 
-              title="Protocol Deviations" 
-              value={metrics.kpis.total_pds} 
-              icon={AlertTriangle} 
-              color="#f59e0b" 
-            />
-            <KpiCard 
-              title="Missing Pages" 
-              value={metrics.kpis.total_missing_pages} 
-              icon={FileWarning} 
-              color="#ef4444" 
-            />
-            <KpiCard 
-              title="Clean Patient Rate" 
-              value={metrics.kpis.clean_patient_rate} 
-              icon={Activity} 
-              color="#10b981" 
-            />
-          </div>
-
-          {/* ROW 2: CHARTS & INSIGHTS */}
-          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '20px' }}>
-            
-            {/* Chart Section */}
-            <div style={{ background: 'white', padding: '25px', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}>
-              <h3 style={{ marginTop: 0, color: '#334155' }}>🚨 Risk Analysis: Top Sites by Issues</h3>
-              <div style={{ height: '300px', width: '100%', marginTop: '20px' }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={metrics.top_risky_sites}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                    <XAxis dataKey="site" />
-                    <YAxis />
-                    <Tooltip />
-                    <Bar dataKey="issues" fill="#ef4444" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-
-{/* AI Agent Section - UPDATED */}
-            <div style={{ background: 'white', padding: '25px', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', marginBottom: '15px' }}>
-                <Search size={20} style={{ color: '#8b5cf6', marginRight: '8px' }} />
-                <h3 style={{ margin: 0, color: '#334155' }}>AI Action Center</h3>
-              </div>
+      {/* --- CUSTOM CONFIRMATION OVERLAY (Replaces Modal) --- */}
+      {showConfirm && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.6)', // Dark background
+          zIndex: 9999, 
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          backdropFilter: 'blur(4px)'
+        }}>
+          <Paper p="xl" radius="md" shadow="xl" withBorder style={{ width: '500px', backgroundColor: 'white' }}>
+            <Stack>
+              <Title order={3}>Confirm Data Ingestion</Title>
+              <Text size="sm" c="dimmed">
+                You are about to ingest <strong>{selectedFiles.length} files</strong> into the clinical data lake.
+              </Text>
               
-              <div style={{ background: '#f3f4f6', padding: '15px', borderRadius: '8px', fontSize: '0.9rem', color: '#475569', lineHeight: '1.6' }}>
-                <strong>Insight detected:</strong>
-                <ul style={{ paddingLeft: '20px', margin: '10px 0' }}>
-                  <li>Site <strong>{metrics.top_risky_sites[0]?.site}</strong> is the primary bottleneck.</li>
-                  <li>Action: Generate escalation protocol.</li>
-                </ul>
+              <Select 
+    label="Target Study Protocol"
+    data={Array.from({length: 25}, (_, i) => `Study ${i + 1}`)} 
+    value={uploadStudy}
+    onChange={setUploadStudy}
+    allowDeselect={false}
+    comboboxProps={{ zIndex: 10001 }} /* 👈 THIS IS THE FIX */
+/>
+
+              <div style={{ 
+                border: '1px solid #eee', 
+                borderRadius: '8px', 
+                padding: '10px', 
+                maxHeight: '200px', 
+                overflowY: 'auto',
+                backgroundColor: '#f9f9f9'
+              }}>
+                <Text size="xs" fw={700} c="dimmed" mb={5} tt="uppercase">Payload Preview:</Text>
+                {selectedFiles.map((f, i) => (
+                    <Group key={i} gap="xs" mb={4} wrap="nowrap">
+                        <FileIcon size={14} color="gray" />
+                        <Text size="xs" truncate>{f.name}</Text>
+                    </Group>
+                ))}
               </div>
 
-              {!emailDraft ? (
-                 <button 
-                  onClick={handleDraftEmail}
-                  disabled={agentLoading}
-                  style={{ 
-                    marginTop: '20px', width: '100%', padding: '12px', 
-                    background: agentLoading ? '#94a3b8' : '#8b5cf6', color: 'white', border: 'none', 
-                    borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' 
-                  }}
-                >
-                  {agentLoading ? "🤖 AI is Analyzing..." : "🤖 Auto-Draft Escalation Email"}
-                </button>
-              ) : (
-                <div style={{ marginTop: '20px', animation: 'fadeIn 0.5s' }}>
-                  <div style={{ fontSize: '0.85rem', fontWeight: 'bold', color: '#475569', marginBottom: '5px' }}>
-                    DRAFT GENERATED ({emailDraft.risk_level} RISK):
-                  </div>
-                  <textarea 
-                    readOnly 
-                    value={`${emailDraft.generated_email.subject}\n\n${emailDraft.generated_email.body}`}
-                    style={{ 
-                      width: '100%', height: '200px', padding: '10px', 
-                      borderRadius: '8px', border: '1px solid #cbd5e1', 
-                      fontSize: '0.85rem', fontFamily: 'monospace' 
-                    }}
-                  />
-                  <button 
-                    onClick={() => {alert("Email Sent via SMTP!"); setEmailDraft(null);}}
-                    style={{ 
-                      marginTop: '10px', width: '100%', padding: '10px', 
-                      background: '#10b981', color: 'white', border: 'none', 
-                      borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' 
-                    }}
-                  >
-                    🚀 Approve & Send
-                  </button>
-                </div>
-              )}
-            </div>
-
-          </div>
-        </>
+              <Group justify="flex-end" mt="md">
+                <Button variant="subtle" onClick={() => setShowConfirm(false)} color="gray">
+                  Cancel
+                </Button>
+                <Button loading={isUploading} onClick={confirmUpload} color="blue" leftSection={<Upload size={16}/>}>
+                  Confirm & Upload
+                </Button>
+              </Group>
+            </Stack>
+          </Paper>
+        </div>
       )}
+
+      {/* --- MAIN APP SHELL --- */}
+      <AppShell
+        header={{ height: 60 }}
+        navbar={{
+          width: 300,
+          breakpoint: 'sm',
+          collapsed: { mobile: !mobileOpened, desktop: !desktopOpened },
+        }}
+        padding="md"
+        layout="alt"
+      >
+        <AppShell.Header>
+          <Group h="100%" px="md" justify="space-between">
+            <Group>
+              <Burger opened={mobileOpened} onClick={toggleMobile} hiddenFrom="sm" size="sm" />
+              <Burger opened={desktopOpened} onClick={toggleDesktop} visibleFrom="sm" size="sm" />
+              <Group gap="xs">
+                  <ThemeIcon color="blue" variant="light" size="lg"><Activity size={20} /></ThemeIcon>
+                  <Title order={3} m={0}>CLARITY.AI</Title>
+              </Group>
+            </Group>
+            
+            <Group>
+              <Select 
+                placeholder="Select Study"
+                data={Array.from({length: 25}, (_, i) => `Study ${i + 1}`)} 
+                value={study}
+                onChange={setStudy}
+                searchable
+                w={200}
+                variant="filled"
+                leftSection={<Search size={14} />}
+              />
+              <FileButton onChange={onFileSelect} multiple accept=".csv,.xlsx">
+                {(props) => (
+                  <Button {...props} loading={isUploading} leftSection={<Upload size={16}/>}>
+                    Ingest Data
+                  </Button>
+                )}
+              </FileButton>
+            </Group>
+          </Group>
+        </AppShell.Header>
+
+        <AppShell.Navbar p="md">
+          <ScrollArea style={{ flex: 1 }}>
+            <Text c="dimmed" size="xs" fw={700} mb="sm" tt="uppercase">Main Menu</Text>
+            <NavLink icon={LayoutDashboard} label="Overview" active />
+            <NavLink icon={Database} label="Data Sources" />
+            <NavLink icon={FileText} label="Site Reports" />
+            <NavLink icon={Settings} label="Settings" />
+          </ScrollArea>
+          
+          <div style={{ borderTop: '1px solid var(--mantine-color-gray-3)', paddingTop: '15px' }}>
+              <Group>
+                  <Avatar color="blue" radius="xl">DR</Avatar>
+                  <div style={{ flex: 1 }}>
+                    <Text size="sm" fw={500}>Dr. Richard Roe</Text>
+                    <Text c="dimmed" size="xs">Global Trial Lead</Text>
+                  </div>
+              </Group>
+          </div>
+        </AppShell.Navbar>
+
+        <AppShell.Main style={{ background: '#f8f9fa' }}>
+          <div style={{ maxWidth: '1600px', margin: '0 auto' }}>
+              <Title order={2} mb="lg">Clinical Operations Overview</Title>
+
+              <div style={{ position: 'relative', minHeight: '200px' }}>
+                  <LoadingOverlay visible={loading} overlayProps={{ radius: "sm", blur: 2 }} />
+                  
+                  <KPIGrid kpis={metrics?.kpis} loading={loading} />
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '20px', marginTop: '20px' }}>
+                      <div style={{ minHeight: '400px' }}>
+                          <RiskChart data={metrics?.top_risky_sites} loading={loading} />
+                      </div>
+                      <div>
+                          <AgentPanel 
+                              metrics={metrics} 
+                              handleDraftEmail={handleDraftEmail}
+                              agentLoading={agentLoading}
+                              emailDraft={emailDraft}
+                              setEmailDraft={setEmailDraft}
+                              loading={loading}
+                          />
+                      </div>
+                  </div>
+              </div>
+          </div>
+        </AppShell.Main>
+      </AppShell>
+    </div>
+  );
+}
+
+// Helper Component for Sidebar Links
+function NavLink({ icon: Icon, label, active }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 12px',
+      borderRadius: '8px', cursor: 'pointer', marginBottom: '4px',
+      backgroundColor: active ? '#e7f5ff' : 'transparent',
+      color: active ? '#1971c2' : '#495057'
+    }}>
+      <Icon size={20} />
+      <Text size="sm" fw={500}>{label}</Text>
     </div>
   )
 }
-
-export default App

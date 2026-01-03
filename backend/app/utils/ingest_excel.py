@@ -1,206 +1,425 @@
+# import pandas as pd
+# import numpy as np
+# import re
+# import logging
+# from sqlalchemy.orm import Session
+# from sqlalchemy import text, inspect
+# from backend.app.utils.dataset_registry import DATASET_SPECS
+# from backend.app.utils.smart_mapper import normalize_dataframe_columns, TARGET_SCHEMA
+
+# logging.basicConfig(level=logging.INFO)
+# logger = logging.getLogger(__name__)
+
+# def extract_study_from_filename(filename: str):
+#     """ Extracts 'Study 1' from filename. """
+#     match = re.search(r"(Study\s?\d+)", filename, re.IGNORECASE)
+#     if match:
+#         raw = match.group(1)
+#         if " " not in raw: raw = raw.replace("Study", "Study ")
+#         return raw.title()
+#     return None
+
+# def extract_study_from_content(dfs: dict):
+#     """ 
+#     Fallback: Looks inside the data for a 'Project Name' or 'Study' column.
+#     """
+#     for sheet_name, df in dfs.items():
+#         # Quick normalize to see if we find a study column
+#         temp_df = df.copy()
+#         # Clean headers
+#         if len(temp_df) > 0:
+#             # Try row 0 header
+#             temp_df.columns = [str(c).strip() for c in temp_df.columns]
+#             temp_df = normalize_dataframe_columns(temp_df)
+            
+#             if 'study_name' in temp_df.columns:
+#                 # Get the first non-empty value
+#                 unique_vals = temp_df['study_name'].dropna().unique()
+#                 for val in unique_vals:
+#                     val_str = str(val)
+#                     if "Study" in val_str:
+#                         return val_str.strip()
+            
+#             # Try row 1 header (common in Metrics reports)
+#             if len(df) > 1:
+#                 df_skip = df.iloc[1:].copy()
+#                 df_skip.columns = df.iloc[0]
+#                 df_skip = normalize_dataframe_columns(df_skip)
+#                 if 'study_name' in df_skip.columns:
+#                     unique_vals = df_skip['study_name'].dropna().unique()
+#                     for val in unique_vals:
+#                          val_str = str(val)
+#                          if "Study" in val_str:
+#                             return val_str.strip()
+#     return None
+
+# def find_header_row(df, max_scan=20):
+#     """ Scans top 20 rows to find the real header row """
+#     best_idx = 0
+#     max_matches = 0
+#     all_keywords = [item for sublist in TARGET_SCHEMA.values() for item in sublist]
+    
+#     for i in range(min(len(df), max_scan)):
+#         row_vals = [str(x).lower().strip() for x in df.iloc[i].values]
+#         matches = sum(1 for val in row_vals if val in all_keywords)
+#         if matches > max_matches:
+#             max_matches = matches
+#             best_idx = i
+#     return best_idx if max_matches >= 2 else 0
+
+# def ensure_subjects_exist(db: Session, df: pd.DataFrame, study_name: str):
+#     if 'subject_id' not in df.columns:
+#         return
+
+#     cols_to_keep = ['subject_id']
+#     if 'site_id' in df.columns:
+#         cols_to_keep.append('site_id')
+        
+#     subjects = df[cols_to_keep].drop_duplicates(subset=['subject_id'])
+    
+#     sql = text("""
+#         INSERT INTO subjects (subject_id, site_id, study_name, status)
+#         VALUES (:uid, :site, :study, 'Active')
+#         ON CONFLICT (subject_id) 
+#         DO UPDATE SET site_id = EXCLUDED.site_id 
+#         WHERE subjects.site_id IS NULL OR subjects.site_id = 'Unknown Site';
+#     """)
+
+#     for _, row in subjects.iterrows():
+#         unique_id = str(row['subject_id']).strip() 
+        
+#         site_val = "Unknown Site"
+#         if 'site_id' in subjects.columns and pd.notna(row['site_id']):
+#             site_val = str(row['site_id'])
+
+#         try:
+#             db.execute(sql, {"uid": unique_id, "site": site_val, "study": study_name})
+#         except Exception as e:
+#             logger.error(f"Subject Insert Error: {e}")
+    
+#     try:
+#         db.commit()
+#     except Exception as e:
+#         db.rollback()
+#         logger.error(f"Subject Commit Failed: {e}")
+
+# def ingest_file(file, db: Session):
+#     filename = file.filename
+#     results = []
+    
+#     # 1. Try filename detection
+#     study_name = extract_study_from_filename(filename)
+    
+#     try:
+#         # Load File
+#         dfs = {}
+#         if filename.endswith('.csv'):
+#             try:
+#                 dfs["Sheet1"] = pd.read_csv(file.file, header=None, low_memory=False)
+#             except:
+#                 file.file.seek(0)
+#                 dfs["Sheet1"] = pd.read_csv(file.file, sep=';', header=None, low_memory=False)
+#         else:
+#             xl = pd.ExcelFile(file.file.read())
+#             for sheet in xl.sheet_names:
+#                 dfs[sheet] = xl.parse(sheet, header=None)
+
+#         # 2. Fallback: Deep Search in Content
+#         if not study_name:
+#             study_name = extract_study_from_content(dfs)
+            
+#         # 3. Last Resort: Fail
+#         if not study_name:
+#             return {
+#                 "status": "error", 
+#                 "reason": f"No Study Name detected in {filename}. Please rename file to start with 'Study X_'."
+#             }
+
+#         # Priority Sort: Metrics first
+#         sorted_sheets = sorted(dfs.items(), key=lambda x: 0 if "metrics" in x[0].lower() or "subject" in x[0].lower() else 1)
+
+#         for sheet_name, df_raw in sorted_sheets:
+#             if df_raw.empty: continue
+
+#             # 1. Header & Normalize
+#             header_idx = find_header_row(df_raw)
+#             new_header = df_raw.iloc[header_idx]
+#             df_content = df_raw[header_idx + 1:].copy()
+#             df_content.columns = new_header
+            
+#             df_clean = normalize_dataframe_columns(df_content)
+#             df_clean = df_clean.loc[:, ~df_clean.columns.duplicated()]
+
+#             # 2. Detect Dataset
+#             dataset_key = None
+#             for key, rules in DATASET_SPECS.items():
+#                 if all(col in df_clean.columns for col in rules['required_columns']):
+#                     dataset_key = key
+#                     break
+            
+#             if not dataset_key: continue 
+
+#             # 3. Transform IDs
+#             df_clean['study_name'] = study_name
+#             if 'subject_id' in df_clean.columns:
+#                 df_clean['subject_id'] = df_clean['subject_id'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
+#                 # Create Composite ID ONCE
+#                 df_clean['subject_id'] = study_name + "_" + df_clean['subject_id']
+
+#             # 4. Create Subjects
+#             ensure_subjects_exist(db, df_clean, study_name)
+            
+#             # SANITIZE INTEGER COLUMNS
+#             if 'days_missing' in df_clean.columns:
+#                 # Force non-numeric values (like #ERROR) to NaN, then fill with 0
+#                 df_clean['days_missing'] = pd.to_numeric(df_clean['days_missing'], errors='coerce').fillna(0)
+            
+#             if 'days_outstanding' in df_clean.columns:
+#                 df_clean['days_outstanding'] = pd.to_numeric(df_clean['days_outstanding'], errors='coerce').fillna(0)
+
+#             # 5. Insert Data
+#             target_table = DATASET_SPECS[dataset_key]["table"]
+#             try:
+#                 inspector = inspect(db.bind)
+#                 valid_db_cols = [c['name'] for c in inspector.get_columns(target_table)]
+#                 columns_to_keep = [c for c in df_clean.columns if c in valid_db_cols]
+#                 df_final = df_clean[columns_to_keep]
+                
+#                 df_final.to_sql(target_table, db.bind, if_exists='append', index=False, method='multi')
+#                 results.append(f"✅ {dataset_key}: Loaded {len(df_final)} rows")
+#             except Exception as e:
+#                 if "Duplicate" not in str(e):
+#                     results.append(f"❌ {sheet_name}: {str(e)}")
+
+#         return {"status": "processed", "details": results, "study": study_name}
+
+#     except Exception as e:
+#         return {"status": "error", "reason": str(e)}
+
+
+
 import pandas as pd
 import numpy as np
+import re
+import logging
 from sqlalchemy.orm import Session
 from sqlalchemy import text, inspect
 from backend.app.utils.dataset_registry import DATASET_SPECS
-from backend.app.utils.column_mappings import COLUMN_MAPPINGS
+from backend.app.utils.smart_mapper import normalize_dataframe_columns, TARGET_SCHEMA
 
-def ensure_subjects_exist(db: Session, df: pd.DataFrame):
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# --- 1. FILENAME DETECTION (The Fast Way) ---
+def extract_study_from_filename(filename: str):
+    """ Extracts 'Study 1' from 'Study 1_Visit_Tracker.csv' """
+    match = re.search(r"(Study\s?\d+)", filename, re.IGNORECASE)
+    if match:
+        raw = match.group(1)
+        if " " not in raw: raw = raw.replace("Study", "Study ")
+        return raw.title()
+    return None
+
+# --- 2. CONTENT DETECTION (The Smart Fallback) ---
+def extract_study_from_content(dfs: dict):
+    """ 
+    Looks inside the Excel/CSV data for a 'Project Name' or 'Study' column.
+    Useful when the filename is generic like 'Inactivated_Rows.xlsx'.
     """
-    Extracts unique subjects from the dataframe and inserts them into the 
-    master 'subjects' table to satisfy Foreign Key constraints.
+    for sheet_name, df in dfs.items():
+        # Make a copy and normalize to find hidden 'study_name' columns
+        try:
+            temp_df = df.copy()
+            # Try finding header in first few rows
+            header_idx = find_header_row(temp_df)
+            new_header = temp_df.iloc[header_idx]
+            temp_df = temp_df[header_idx + 1:]
+            temp_df.columns = new_header
+            
+            # Normalize to see if we have 'study_name'
+            temp_df = normalize_dataframe_columns(temp_df)
+            
+            if 'study_name' in temp_df.columns:
+                # Get the first value (e.g., "Study 2")
+                unique_vals = temp_df['study_name'].dropna().unique()
+                for val in unique_vals:
+                    val_str = str(val).strip()
+                    # Validate it looks like "Study X"
+                    if re.match(r"Study\s?\d+", val_str, re.IGNORECASE):
+                        # Standardize format to "Study X"
+                        match = re.search(r"(Study\s?\d+)", val_str, re.IGNORECASE)
+                        raw = match.group(1)
+                        if " " not in raw: raw = raw.replace("Study", "Study ")
+                        return raw.title()
+        except Exception:
+            continue # If this sheet fails, try the next one
+
+    return None
+
+def find_header_row(df, max_scan=20):
+    """ Scans top 20 rows to find the real header row """
+    best_idx = 0
+    max_matches = 0
+    all_keywords = [item for sublist in TARGET_SCHEMA.values() for item in sublist]
+    
+    for i in range(min(len(df), max_scan)):
+        row_vals = [str(x).lower().strip() for x in df.iloc[i].values]
+        matches = sum(1 for val in row_vals if val in all_keywords)
+        if matches > max_matches:
+            max_matches = matches
+            best_idx = i
+    return best_idx if max_matches >= 2 else 0
+
+def ensure_subjects_exist(db: Session, df: pd.DataFrame, study_name: str):
+    """
+    Creates subjects in the database.
     """
     if 'subject_id' not in df.columns:
         return
 
-    # Create a clean list of subjects to load
-    subjects_to_load = df[['subject_id']].copy()
+    # Keep Site ID if exists
+    cols_to_keep = ['subject_id']
+    if 'site_id' in df.columns:
+        cols_to_keep.append('site_id')
+        
+    subjects = df[cols_to_keep].drop_duplicates(subset=['subject_id'])
     
-    # Add optional context columns if they exist in this file
-    subjects_to_load['study_name'] = df['study_name'] if 'study_name' in df.columns else None
-    subjects_to_load['site_id'] = df['site_id'] if 'site_id' in df.columns else None
-    
-    # Deduplicate
-    subjects_to_load = subjects_to_load.drop_duplicates(subset=['subject_id'])
-
-    # SQL to Insert (Upsert)
-    # We use ON CONFLICT DO NOTHING to simply skip if the subject exists
-    insert_sql = text("""
-        INSERT INTO subjects (subject_id, site_id, study_name)
-        VALUES (:subject_id, :site_id, :study_name)
-        ON CONFLICT (subject_id) DO NOTHING;
+    sql = text("""
+        INSERT INTO subjects (subject_id, site_id, study_name, status)
+        VALUES (:uid, :site, :study, 'Active')
+        ON CONFLICT (subject_id) 
+        DO UPDATE SET site_id = EXCLUDED.site_id 
+        WHERE subjects.site_id IS NULL OR subjects.site_id = 'Unknown Site';
     """)
 
-    for _, row in subjects_to_load.iterrows():
+    for _, row in subjects.iterrows():
+        unique_id = str(row['subject_id']).strip() 
+        
+        site_val = "Unknown Site"
+        if 'site_id' in subjects.columns and pd.notna(row['site_id']):
+            site_val = str(row['site_id'])
+
         try:
-            db.execute(insert_sql, {
-                "subject_id": row['subject_id'], 
-                "site_id": row['site_id'], 
-                "study_name": row['study_name']
-            })
+            db.execute(sql, {"uid": unique_id, "site": site_val, "study": study_name})
         except Exception as e:
-            # If this fails, we log it, but we try to keep going. 
-            # If this fails, the next step (Foreign Key check) will likely fail too.
-            print(f"⚠️ Could not auto-create subject {row['subject_id']}: {e}")
+            logger.error(f"Subject Insert Error: {e}")
     
-    # CRITICAL: Commit immediately so the main insert sees these subjects
     try:
         db.commit()
     except Exception as e:
         db.rollback()
-        print(f"⚠️ DB Commit failed during subject creation: {e}")
+        logger.error(f"Subject Commit Failed: {e}")
 
-def identify_dataset(df, sheet_name):
-    # Quick Check: Scan first 20 rows converted to string
-    sample_text = df.head(20).to_string().lower()
-    
-    for spec_name, rules in DATASET_SPECS.items():
-        # 1. Sheet Name Match (if strict)
-        if rules["sheet_match"] and rules["sheet_match"].lower() not in str(sheet_name).lower():
-            if sheet_name != "Sheet1": # Allow CSVs (defaults to Sheet1) to pass
-                continue
-
-        # 2. Column Signature Check
-        # All required columns must be present in the sample text
-        missing_col = False
-        for req_col in rules["required_columns"]:
-            if req_col.lower() not in sample_text:
-                missing_col = True
-                break
-        
-        if not missing_col:
-            return spec_name # Found match
-            
-    return None
-
-def smart_parse_safe(df, table_type):
-    mapping = COLUMN_MAPPINGS.get(table_type)
-    if not mapping:
-        return None
-
-    col_indices = {}
-    header_row_index = -1
-
-    # Search for header row (scan top 20 rows)
-    for r in range(min(20, len(df))):
-        row_values = [str(x).strip().lower() for x in df.iloc[r].values]
-        matches = 0
-        temp_indices = {}
-        
-        for db_col, possible_headers in mapping.items():
-            for header in possible_headers:
-                if header.lower() in row_values:
-                    col_idx = row_values.index(header.lower())
-                    temp_indices[db_col] = col_idx
-                    matches += 1
-                    break
-        
-        # If we found > 50% of expected columns, assume this is the header
-        if matches >= len(mapping) * 0.5: 
-            col_indices = temp_indices
-            header_row_index = r
-            break
-    
-    # Backup Search (2-row Header support)
-    if header_row_index == -1:
-         for r in range(min(19, len(df))):
-            row1 = [str(x).strip().lower() for x in df.iloc[r].values]
-            row2 = [str(x).strip().lower() for x in df.iloc[r+1].values]
-            combined_values = set(row1) | set(row2) 
-            matches = 0
-            for db_col, possible_headers in mapping.items():
-                for header in possible_headers:
-                    if header.lower() in combined_values:
-                        matches += 1
-                        break
-            if matches >= len(mapping) * 0.6:
-                header_row_index = r + 1
-                # Re-map columns using row2 primarily
-                for db_col, possible_headers in mapping.items():
-                    for header in possible_headers:
-                        h_lower = header.lower()
-                        if h_lower in row2:
-                            col_indices[db_col] = row2.index(h_lower)
-                            break
-                        elif h_lower in row1:
-                            try:
-                                col_indices[db_col] = row1.index(h_lower)
-                            except: pass
-                break
-
-    if header_row_index == -1 or not col_indices:
-        return None
-
-    # Extract Data
-    data_start = header_row_index + 1
-    found_data = {}
-    for db_col, col_idx in col_indices.items():
-        found_data[db_col] = df.iloc[data_start:, col_idx].values
-
-    return pd.DataFrame(found_data)
-
-def ingest_file(file, db: Session):
+# --- UPDATE THIS FUNCTION ---
+def ingest_file(file, db: Session, study_name: str = None):
     filename = file.filename
     results = []
     
+    # CASE A: User selected a study in the UI (The "Batch Context" approach)
+    if study_name:
+        # We trust the user's selection. No need to search the file.
+        pass 
+        
+    # CASE B: No study selected? Try to auto-detect (Fallback)
+    else:
+        # 1. Try Filename
+        study_name = extract_study_from_filename(filename)
+        
+        # 2. Try Content
+        if not study_name:
+             # We need to load the file early to check content for the name
+            try:
+                if filename.endswith('.csv'):
+                    # ... (csv loading logic) ...
+                    pass 
+                else:
+                    # ... (excel loading logic) ...
+                    pass 
+                # (This part gets tricky because we usually load the file later. 
+                #  If using Batch Context, you rarely reach this fallback.)
+                pass
+            except:
+                pass
+
+    # FINAL CHECK: Do we have a study name now?
+    if not study_name:
+         return {
+            "status": "error", 
+            "reason": f"Study Name is missing. Please select a Study from the dropdown."
+        }
+
     try:
-        # Load File (CSV or Excel)
+        # Load File (If not already loaded in fallback)
         dfs = {}
+        file.file.seek(0) # RESET POINTER in case we read it during detection
+        
         if filename.endswith('.csv'):
-            dfs["Sheet1"] = pd.read_csv(file.file, header=None, low_memory=False)
+            try:
+                dfs["Sheet1"] = pd.read_csv(file.file, header=None, low_memory=False)
+            except:
+                file.file.seek(0)
+                dfs["Sheet1"] = pd.read_csv(file.file, sep=';', header=None, low_memory=False)
         else:
             xl = pd.ExcelFile(file.file.read())
             for sheet in xl.sheet_names:
                 dfs[sheet] = xl.parse(sheet, header=None)
 
-        for sheet_name, df_raw in dfs.items():
-            # 1. Identify Dataset
-            dataset_key = identify_dataset(df_raw, sheet_name)
-            
-            if not dataset_key:
-                continue 
+        # Priority Sort: Metrics first
+        sorted_sheets = sorted(dfs.items(), key=lambda x: 0 if "metrics" in x[0].lower() or "subject" in x[0].lower() else 1)
 
-            # 2. Parse Columns
-            clean_df = smart_parse_safe(df_raw, dataset_key)
-            
-            if clean_df is None or clean_df.empty:
-                results.append(f"⚠️ Warning: Identified '{dataset_key}' in {sheet_name} but failed to parse data.")
-                continue
+        for sheet_name, df_raw in sorted_sheets:
+            if df_raw.empty: continue
 
-            # 3. Clean Data & Normalize IDs
-            clean_df = clean_df.replace({np.nan: None})
+            # 1. Header & Normalize
+            header_idx = find_header_row(df_raw)
+            new_header = df_raw.iloc[header_idx]
+            df_content = df_raw[header_idx + 1:].copy()
+            df_content.columns = new_header
             
-            # --- CRITICAL FIX: Trim whitespace from Subject IDs ---
-            if 'subject_id' in clean_df.columns:
-                clean_df = clean_df.dropna(subset=['subject_id'])
-                clean_df['subject_id'] = clean_df['subject_id'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
+            df_clean = normalize_dataframe_columns(df_content)
+            df_clean = df_clean.loc[:, ~df_clean.columns.duplicated()]
 
-            # 4. Auto-Create Subjects (Fixes FK Violation)
-            ensure_subjects_exist(db, clean_df)
+            # 2. Detect Dataset
+            dataset_key = None
+            for key, rules in DATASET_SPECS.items():
+                if all(col in df_clean.columns for col in rules['required_columns']):
+                    dataset_key = key
+                    break
+            
+            if not dataset_key: continue 
+
+            # 3. Transform IDs (Uses the study_name we passed in!)
+            df_clean['study_name'] = study_name
+            
+            if 'subject_id' in df_clean.columns:
+                df_clean['subject_id'] = df_clean['subject_id'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
+                # Enforce unique ID format: Study2_1001
+                df_clean['subject_id'] = study_name + "_" + df_clean['subject_id']
+            
+            # SANITIZE INTEGER COLUMNS
+            if 'days_missing' in df_clean.columns:
+                df_clean['days_missing'] = pd.to_numeric(df_clean['days_missing'], errors='coerce').fillna(0)
+            if 'days_outstanding' in df_clean.columns:
+                df_clean['days_outstanding'] = pd.to_numeric(df_clean['days_outstanding'], errors='coerce').fillna(0)
+
+            # 4. Create Subjects
+            ensure_subjects_exist(db, df_clean, study_name)
 
             # 5. Insert Data
             target_table = DATASET_SPECS[dataset_key]["table"]
             try:
-                clean_df.to_sql(target_table, db.bind, if_exists='append', index=False, method='multi')
-                results.append(f"✅ Success: Ingested {len(clean_df)} rows into {target_table} (Source: {sheet_name})")
+                inspector = inspect(db.bind)
+                valid_db_cols = [c['name'] for c in inspector.get_columns(target_table)]
+                columns_to_keep = [c for c in df_clean.columns if c in valid_db_cols]
+                df_final = df_clean[columns_to_keep]
+                
+                df_final.to_sql(target_table, db.bind, if_exists='append', index=False, method='multi')
+                results.append(f"✅ {dataset_key}: Loaded {len(df_final)} rows")
             except Exception as e:
-                # Debugging info for Schema errors
-                err_msg = str(e)
-                if 'UndefinedColumn' in err_msg:
-                    # Fetch DB columns to show user what is actually there
-                    inspector = inspect(db.bind)
-                    db_cols = [c['name'] for c in inspector.get_columns(target_table)]
-                    df_cols = list(clean_df.columns)
-                    results.append(f"❌ DB Schema Error ({target_table}): Missing column. \nDB has: {db_cols}\nData has: {df_cols}")
-                elif 'ForeignKeyViolation' in err_msg:
-                    results.append(f"❌ Foreign Key Error ({target_table}): Subjects mismatch. We tried to auto-create them, but the IDs in the file might contain hidden characters.")
-                else:
-                    results.append(f"❌ DB Error for {target_table}: {err_msg}")
+                if "Duplicate" not in str(e):
+                    results.append(f"❌ {sheet_name}: {str(e)}")
 
-        if not results:
-            return {"status": "skipped", "reason": "No valid datasets found in file.", "file": filename}
-
-        return {"status": "processed", "details": results, "file": filename}
+        return {"status": "processed", "details": results, "study": study_name}
 
     except Exception as e:
-        return {"status": "error", "reason": str(e), "file": filename}
+        return {"status": "error", "reason": str(e)}
