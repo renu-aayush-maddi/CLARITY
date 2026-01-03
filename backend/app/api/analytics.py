@@ -284,3 +284,53 @@ def get_study_list(db: Session = Depends(get_db)):
     sql = text("SELECT DISTINCT study_name FROM subjects ORDER BY study_name")
     results = db.execute(sql).fetchall()
     return [row[0] for row in results if row[0]]
+
+
+# backend/app/api/analytics.py (Add to bottom)
+
+@router.get("/analytics/subject-details")
+def get_subject_details(study: str, subject_id: str, db: Session = Depends(get_db)):
+    """
+    PATIENT 360 API:
+    Aggregates all clinical data for a single subject into one view.
+    """
+    # 1. Subject Demographics (Mocked from Subject ID structure usually)
+    # In a real DB, this comes from a 'Demographics' form.
+    sub_sql = text("SELECT site_id, status FROM subjects WHERE subject_id = :sid AND study_name = :study")
+    sub_row = db.execute(sub_sql, {"sid": subject_id, "study": study}).fetchone()
+    
+    if not sub_row:
+        return {"error": "Subject not found"}
+
+    # 2. Missing Pages List
+    mp_sql = text("SELECT form_name, visit_date, days_missing FROM raw_missing_pages WHERE subject_id = :sid AND study_name = :study")
+    missing_pages = db.execute(mp_sql, {"sid": subject_id, "study": study}).fetchall()
+    
+    # 3. Protocol Deviations
+    pd_sql = text("SELECT category, pd_status, visit_date FROM raw_protocol_deviations WHERE subject_id = :sid AND study_name = :study")
+    deviations = db.execute(pd_sql, {"sid": subject_id, "study": study}).fetchall()
+
+    # 4. Visit Projections (Timeline)
+    vp_sql = text("SELECT visit_name, projected_date, days_outstanding FROM raw_visit_projections WHERE subject_id = :sid AND study_name = :study ORDER BY projected_date")
+    timeline = db.execute(vp_sql, {"sid": subject_id, "study": study}).fetchall()
+
+    # 5. Safety / SAEs
+    sae_sql = text("SELECT case_status, review_status FROM raw_sae_safety WHERE subject_id = :sid")
+    saes = db.execute(sae_sql, {"sid": subject_id}).fetchall()
+
+    return {
+        "subject_id": subject_id,
+        "site_id": sub_row[0],
+        "status": sub_row[1],
+        "metrics": {
+            "missing_count": len(missing_pages),
+            "deviation_count": len(deviations),
+            "sae_count": len(saes)
+        },
+        "data": {
+            "missing_pages": [{"form": r[0], "date": r[1], "lag": r[2]} for r in missing_pages],
+            "deviations": [{"category": r[0], "status": r[1], "date": r[2]} for r in deviations],
+            "timeline": [{"visit": r[0], "date": r[1], "overdue_by": r[2]} for r in timeline],
+            "saes": [{"status": r[0], "review": r[1]} for r in saes]
+        }
+    }

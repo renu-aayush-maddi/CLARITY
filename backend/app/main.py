@@ -8,7 +8,7 @@ from backend.app.utils.ingest_excel import ingest_file
 from fastapi.middleware.cors import CORSMiddleware
 
 # --- Import the new analytics router ---
-from backend.app.api import analytics, agent
+from backend.app.api import analytics,agent, chat,sentinel
 
 app = FastAPI()
 
@@ -30,6 +30,8 @@ app.add_middleware(
 # --- Register Routes ---
 app.include_router(analytics.router, prefix="/api")
 app.include_router(agent.router, prefix="/api")
+app.include_router(chat.router, prefix="/api")
+app.include_router(sentinel.router, prefix="/api")
 
 @app.post("/api/upload")
 async def upload_files(
