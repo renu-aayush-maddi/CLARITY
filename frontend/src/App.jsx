@@ -1,4 +1,3 @@
-// App.jsx
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import '@mantine/core/styles.css'; 
@@ -7,23 +6,25 @@ import {
   Select, Button, FileButton, Text, Title, 
   LoadingOverlay, ScrollArea, Avatar,
   ThemeIcon, Paper, Stack, ActionIcon,
-  Indicator, Menu, Badge, Card // <--- ADDED THESE
+  Indicator, Menu, Badge, Card, Modal, Textarea // <--- Added Modal components
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { 
   LayoutDashboard, Database, FileText, Settings, 
   Upload, Activity, Search, LogOut, Sparkles,
-  Bell, CheckCircle, AlertTriangle, XCircle // <--- ADDED ICONS
+  Bell, CheckCircle, AlertTriangle, XCircle ,BrainCircuit
 } from 'lucide-react';
 
-// ... (Keep existing component imports)
+// COMPONENTS
 import KPIGrid from './components/KPIGrid';
 import RiskChart from './components/RiskChart';
 import AgentPanel from './components/AgentPanel';
 import SiteReport from './components/SiteReport';
 import CRAWorkspace from './components/CRAWorkspace'; 
 import LandingPage from './components/LandingPage';  
-import ClarityChat from './components/ClarityChat';
+import ClarityChat from './components/ClarityChat'; 
+import DataSources from './components/DataSources'; // <--- Ensure this is imported
+import AIGovernance from './components/AIGovernance';
 
 export default function App() {
   return (
@@ -44,26 +45,31 @@ function MainFlow() {
 }
 
 function DashboardShell({ userRole, onLogout }) {
-  // ... (Keep existing state: mobileOpened, desktopOpened, study, metrics, etc.)
   const [mobileOpened, { toggle: toggleMobile }] = useDisclosure();
   const [desktopOpened, { toggle: toggleDesktop }] = useDisclosure(true);
+
+  // --- APP STATE ---
   const [study, setStudy] = useState("Study 1");
   const [metrics, setMetrics] = useState(null);
   const [loading, setLoading] = useState(true); 
   const [activeView, setActiveView] = useState(userRole === 'CRA' ? 'cra_worklist' : 'overview');
+
   const [emailDraft, setEmailDraft] = useState(null);
   const [agentLoading, setAgentLoading] = useState(false);
   const [availableStudies, setAvailableStudies] = useState([]);
+  
   const [chatOpened, { open: openChat, close: closeChat }] = useDisclosure(false);
+  
+  // --- SENTINEL ALERTS ---
+  const [alerts, setAlerts] = useState([]);
+
+  // --- UPLOAD STATE ---
   const [isUploading, setIsUploading] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [uploadStudy, setUploadStudy] = useState(study);
 
-  // --- NEW: SENTINEL ALERTS STATE ---
-  const [alerts, setAlerts] = useState([]);
-
-  // --- NEW: SENTINEL POLLING EFFECT ---
+  // --- FETCH SENTINEL ALERTS ---
   useEffect(() => {
     async function scanRisks() {
         try {
@@ -76,10 +82,7 @@ function DashboardShell({ userRole, onLogout }) {
     if (study) scanRisks();
   }, [study]);
 
-
-  // ... (Keep existing handlers: loadStudies, fetchData, onFileSelect, etc.)
-  // ... (Keep confirmUpload, handleDraftEmail)
-
+  // --- LOAD STUDIES ---
   useEffect(() => {
     async function loadStudies() {
         try {
@@ -97,6 +100,7 @@ function DashboardShell({ userRole, onLogout }) {
     loadStudies();
   }, []);
 
+  // --- FETCH METRICS ---
   const fetchData = async () => {
     setLoading(true);
     try {
@@ -111,6 +115,7 @@ function DashboardShell({ userRole, onLogout }) {
 
   useEffect(() => { fetchData(); setEmailDraft(null); }, [study]);
 
+  // --- HANDLERS ---
   const onFileSelect = (files) => {
     if (files && files.length > 0) {
         const fileArray = Array.from(files);
@@ -139,14 +144,21 @@ function DashboardShell({ userRole, onLogout }) {
     }
   };
 
-  const handleDraftEmail = async () => {
-    const validRiskEntry = metrics?.top_risky_sites?.find(item => item.site !== null);
-    if (!validRiskEntry) return;
+  const handleDraftEmail = async (siteId) => { // Accepts optional siteId
+    let targetSite = siteId;
+    
+    // If no siteId passed, try to find one from risky list
+    if (!targetSite) {
+        const validRiskEntry = metrics?.top_risky_sites?.find(item => item.site !== null);
+        if (validRiskEntry) targetSite = validRiskEntry.site;
+    }
+
+    if (!targetSite) return;
 
     setAgentLoading(true);
     try {
       const res = await axios.post(`http://127.0.0.1:8000/api/agent/draft-escalation`, {
-        site_id: validRiskEntry.site,
+        site_id: targetSite,
         study_name: study
       });
       setEmailDraft(res.data);
@@ -157,10 +169,17 @@ function DashboardShell({ userRole, onLogout }) {
     }
   };
 
+  const handleViewSite = (siteId) => {
+    // This switches to the report view
+    // Note: The SiteReport component tracks its own internal state for the dropdown.
+    // For a perfect UX, we'd lift that state up, but switching views is the critical step here.
+    setActiveView('reports'); 
+  };
+
   return (
     <div style={{ position: 'relative', width: '100vw', height: '100vh' }}>
       
-      {/* ... (Keep Overlay Code) ... */}
+      {/* CONFIRM UPLOAD OVERLAY */}
       {showConfirm && (
         <div style={{
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
@@ -181,7 +200,29 @@ function DashboardShell({ userRole, onLogout }) {
         </div>
       )}
 
-      {/* DASHBOARD */}
+      {/* EMAIL DRAFT MODAL */}
+      <Modal 
+        opened={!!emailDraft} 
+        onClose={() => setEmailDraft(null)} 
+        title={<Group><Sparkles size={16} color="purple"/><Text fw={700}>AI Drafted Escalation</Text></Group>}
+        size="lg"
+      >
+        <Stack>
+            <Text size="sm" c="dimmed">The AI has drafted this email based on the site's missing pages and risk profile.</Text>
+            <Textarea 
+                autosize 
+                minRows={8} 
+                value={emailDraft || ''} 
+                onChange={(e) => setEmailDraft(e.target.value)}
+            />
+            <Group justify="flex-end">
+                <Button variant="default" onClick={() => setEmailDraft(null)}>Discard</Button>
+                <Button color="blue" onClick={() => { alert("Email Sent!"); setEmailDraft(null); }}>Send Now</Button>
+            </Group>
+        </Stack>
+      </Modal>
+
+      {/* DASHBOARD SHELL */}
       <AppShell
         header={{ height: 60 }}
         navbar={{ width: 300, breakpoint: 'sm', collapsed: { mobile: !mobileOpened, desktop: !desktopOpened } }}
@@ -198,11 +239,9 @@ function DashboardShell({ userRole, onLogout }) {
                   <Title order={3} m={0}>CLARITY.AI</Title>
               </Group>
             </Group>
-            
-            {/* --- UPDATED HEADER GROUP STARTS HERE --- */}
             <Group>
               
-              {/* 1. SENTINEL NOTIFICATION BELL */}
+              {/* SENTINEL NOTIFICATION BELL */}
               <Menu shadow="md" width={320} position="bottom-end">
                 <Menu.Target>
                   <ActionIcon variant="transparent" size="lg" color="gray">
@@ -237,17 +276,10 @@ function DashboardShell({ userRole, onLogout }) {
                 </Menu.Dropdown>
               </Menu>
 
-              {/* 2. ASK AI BUTTON */}
-              <Button 
-                variant="light" 
-                color="violet" 
-                onClick={openChat} 
-                leftSection={<Sparkles size={16}/>}
-              >
+              <Button variant="light" color="violet" onClick={openChat} leftSection={<Sparkles size={16}/>}>
                 Ask AI
               </Button>
 
-              {/* 3. STUDY SELECTOR & UPLOAD */}
               <Select 
                 placeholder="Select Study" data={availableStudies} value={study} onChange={setStudy}
                 searchable w={200} variant="filled" leftSection={<Search size={14} />}
@@ -256,18 +288,17 @@ function DashboardShell({ userRole, onLogout }) {
                 {(props) => <Button {...props} loading={isUploading} leftSection={<Upload size={16}/>}>Ingest Data</Button>}
               </FileButton>
             </Group>
-            {/* --- UPDATED HEADER GROUP ENDS HERE --- */}
-
           </Group>
         </AppShell.Header>
 
-        {/* ... (Navbar and Main Content remain exactly the same) ... */}
         <AppShell.Navbar p="md">
-            {/* ... Navbar content ... */}
             <ScrollArea style={{ flex: 1 }}>
             <Text c="dimmed" size="xs" fw={700} mb="sm" tt="uppercase">Main Menu</Text>
             {userRole === 'Lead' && (
+                 <>
                 <NavLink icon={LayoutDashboard} label="Overview" active={activeView === 'overview'} onClick={() => setActiveView('overview')} />
+                <NavLink icon={BrainCircuit} label="AI Cortex" active={activeView === 'governance'} onClick={() => setActiveView('governance')} /> {/* NEW */}
+                </>
             )}
             {userRole === 'CRA' && (
                 <NavLink icon={FileText} label="My Worklist" active={activeView === 'cra_worklist'} onClick={() => setActiveView('cra_worklist')} />
@@ -294,8 +325,9 @@ function DashboardShell({ userRole, onLogout }) {
         </AppShell.Navbar>
 
         <AppShell.Main style={{ background: '#f8f9fa' }}>
-            {/* ... Main content ... */}
-             <div style={{ maxWidth: '1600px', margin: '0 auto' }}>
+          <div style={{ maxWidth: '1600px', margin: '0 auto' }}>
+              
+              {/* VIEW: EXECUTIVE DASHBOARD */}
               {activeView === 'overview' && userRole === 'Lead' && (
                   <>
                       <Title order={2} mb="lg">Clinical Operations Overview</Title>
@@ -314,23 +346,40 @@ function DashboardShell({ userRole, onLogout }) {
                   </>
               )}
 
-              {/* VIEW: CRA WORKSPACE */}
+              {/* VIEW: CRA WORKSPACE (Passed onViewSite prop) */}
               {(activeView === 'cra_worklist' || (userRole === 'CRA' && activeView !== 'reports')) && (
-                  <CRAWorkspace metrics={metrics} handleDraftEmail={handleDraftEmail} />
+                  <CRAWorkspace 
+                    study={study} 
+                    handleDraftEmail={handleDraftEmail} 
+                    onViewSite={handleViewSite} 
+                  />
+              )}
+
+              {activeView === 'governance' && (
+    <AIGovernance />
+)}
+
+              {/* VIEW: DATA SOURCES */}
+              {activeView === 'sources' && (
+                  <DataSources />
               )}
 
               {/* VIEW: SITE REPORTS */}
               {activeView === 'reports' && (
                   <SiteReport study={study} />
               )}
+
           </div>
+
           <ClarityChat opened={chatOpened} onClose={closeChat} study={study} />
+
         </AppShell.Main>
       </AppShell>
     </div>
   );
 }
 
+// Helper component for Navigation Links
 function NavLink({ icon: Icon, label, active, onClick }) {
   return (
     <div onClick={onClick} style={{

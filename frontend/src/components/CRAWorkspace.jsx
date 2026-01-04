@@ -1,90 +1,168 @@
-// src/components/CRAWorkspace.jsx
-import { Paper, Title, Text, Group, Badge, Button, Stack, Avatar, ThemeIcon } from '@mantine/core';
-import { Phone, Mail, CheckCircle, AlertCircle, Clock } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { 
+  Paper, Title, Text, Group, Button, Grid, Badge, 
+  Card, Progress, Tabs, ThemeIcon, Alert, ScrollArea, LoadingOverlay 
+} from '@mantine/core';
+import { 
+  ClipboardList, CheckCircle, AlertCircle, 
+  MessageSquare, ArrowRight, Brain 
+} from 'lucide-react';
+import axios from 'axios';
 
-export default function CRAWorkspace({ metrics, handleDraftEmail }) {
-  // Filter for "High Risk" sites to create a Todo List
-  // If no risky sites exist, we default to an empty array
-  const mySites = metrics?.top_risky_sites || [];
-  
+export default function CRAWorkspace({ study, handleDraftEmail, onViewSite }) { 
+  const [activeTab, setActiveTab] = useState('tasks');
+  const [mySites, setMySites] = useState([]); 
+  const [clusters, setClusters] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  // 1. LOAD REAL DATA FOR THE SELECTED STUDY
+  useEffect(() => {
+    async function loadWorkspaceData() {
+        setLoading(true);
+        try {
+            // A. Fetch Real Sites (Simulating "My Assigned Sites" by taking top 3)
+            const siteRes = await axios.get(`http://127.0.0.1:8000/api/analytics/sites-list?study=${study}`);
+            const allSites = siteRes.data || [];
+            setMySites(allSites.slice(0, 3)); 
+
+            // B. Fetch Smart Clusters for this Study (Real Agentic Logic)
+            const clusterRes = await axios.get(`http://127.0.0.1:8000/api/agent/cluster-queries?study=${study}`);
+            setClusters(clusterRes.data || []);
+        } catch (e) {
+            console.error("Workspace Load Error:", e);
+        } finally {
+            setLoading(false);
+        }
+    }
+    if (study) loadWorkspaceData();
+  }, [study]);
+
+  // Bulk Action Simulation
+  const handleBulkAction = () => {
+    alert("✅ SUCCESS: 12 bulk queries have been generated and pushed to the EDC system.");
+  };
+
   return (
-    <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
-      <Group justify="space-between" mb="xl">
+    <div style={{ paddingBottom: '20px' }}>
+      
+      {/* HEADER */}
+      <Group justify="space-between" mb="lg" align="flex-end">
         <div>
-           <Title order={2}>Monitor Worklist</Title>
-           <Text c="dimmed">
-             You have <strong>{mySites.length}</strong> high-priority sites requiring attention today.
-           </Text>
+            <Title order={2}>Monitor Workspace: {study}</Title>
+            <Text c="dimmed">Focusing on your <span style={{color: '#fa5252', fontWeight: 700}}>{mySites.length} assigned sites</span>.</Text>
         </div>
-        <Group>
-            <Badge size="lg" color="red" variant="light">3 Critical Escalations</Badge>
-            <Badge size="lg" color="blue" variant="light">5 Routine Follow-ups</Badge>
-        </Group>
+        <Paper withBorder p="xs" px="md" radius="md">
+            <Text size="xs" c="dimmed" tt="uppercase" fw={700}>Compliance Score</Text>
+            <Text fw={700} size="xl" c="blue">94%</Text>
+        </Paper>
       </Group>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '20px' }}>
-        
-        {/* RENDER A CARD FOR EACH RISKY SITE */}
-        {mySites.map((site, index) => (
-            <Paper key={index} withBorder radius="md" p="md" shadow="sm">
-                <Group justify="space-between" mb="md">
-                    <Group gap="sm">
-                        {/* We try to format 'Site 38' nicely, fallback to 'S' if format differs */}
-                        <Avatar color="blue" radius="xl">
-                          {site.site.includes('Site') ? site.site.replace('Site ', '') : 'S'}
-                        </Avatar>
-                        <div>
-                            <Text fw={700}>{site.site}</Text>
-                            <Text size="xs" c="dimmed">Principal Investigator: Dr. Smith</Text>
-                        </div>
+      {/* MY SITES CARDS (Dynamic Data) */}
+      <Grid mb="xl">
+        {mySites.map((siteId, i) => (
+            <Grid.Col key={i} span={{ base: 12, md: 4 }}>
+                <Card withBorder radius="md" padding="lg">
+                    <Group justify="space-between" mb="xs">
+                        <Text fw={600}>{siteId}</Text>
+                        <Badge color={i === 0 ? "red" : "green"}>{i === 0 ? "Action Needed" : "On Track"}</Badge>
                     </Group>
-                    <Badge color="red" variant="filled">Risk Score: {parseInt(site.issues || site.risk_score)}</Badge>
-                </Group>
-
-                <Paper withBorder p="xs" bg="gray.0" mb="md">
-                    <Group gap="xs" mb={5}>
-                        <AlertCircle size={16} color="red" />
-                        <Text size="sm" fw={500}>Detected Issues:</Text>
+                    
+                    <Text size="sm" c="dimmed" mt="sm">Data Entry Progress</Text>
+                    <Progress value={i === 0 ? 65 : 88} color={i === 0 ? "red" : "blue"} mt={4} mb="md" />
+                    
+                    <Group grow>
+                        {/* 1. DRAFT EMAIL BUTTON */}
+                        <Button variant="light" size="xs" onClick={() => handleDraftEmail(siteId)}>
+                            Draft Email
+                        </Button>
+                        {/* 2. VIEW DETAILS BUTTON (Navigates to Report) */}
+                        <Button variant="default" size="xs" onClick={() => onViewSite(siteId)}>
+                            View Details
+                        </Button>
                     </Group>
-                    <Stack gap={4} pl={24}>
-                        <Text size="xs" c="dimmed">• Data Quality Index (DQI) below threshold</Text>
-                        <Text size="xs" c="dimmed">• Multiple open safety or protocol signals</Text>
-                    </Stack>
-                </Paper>
-
-                <Group grow>
-                    <Button 
-                        variant="light" 
-                        color="blue" 
-                        leftSection={<Phone size={14}/>}
-                        size="xs"
-                        onClick={() => alert(`Log call for ${site.site}`)}
-                    >
-                        Log Call
-                    </Button>
-                    <Button 
-                        variant="filled" 
-                        color="violet" 
-                        leftSection={<Mail size={14}/>} 
-                        size="xs"
-                        onClick={handleDraftEmail} // This triggers your Gemini/OpenAI Agent
-                    >
-                        Draft Escalation
-                    </Button>
-                </Group>
-            </Paper>
+                </Card>
+            </Grid.Col>
         ))}
-        
-        {/* EMPTY STATE / COMPLIANT PLACEHOLDER */}
-        {mySites.length < 3 && (
-            <Paper withBorder radius="md" p="md" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', borderStyle: 'dashed', minHeight: '200px' }}>
-                <Stack align="center" gap="xs">
-                    <CheckCircle size={32} color="green" style={{ opacity: 0.5 }} />
-                    <Text c="dimmed" size="sm">All other assigned sites are compliant.</Text>
-                </Stack>
-            </Paper>
+        {mySites.length === 0 && !loading && (
+            <Text c="dimmed" p="md">No sites found for this study.</Text>
         )}
-      </div>
+      </Grid>
+
+      {/* TABS AREA */}
+      <Paper withBorder p="md" radius="md" style={{ minHeight: '400px', position: 'relative' }}>
+        <LoadingOverlay visible={loading} />
+        
+        <Tabs value={activeTab} onChange={setActiveTab}>
+            <Tabs.List mb="md">
+                <Tabs.Tab value="tasks" leftSection={<ClipboardList size={16}/>}>Prioritized Tasks</Tabs.Tab>
+                <Tabs.Tab value="smart_queries" leftSection={<Brain size={16} color="purple"/>}>
+                    Smart Query Manager <Badge size="xs" circle ml={5} color="purple">{clusters.length}</Badge>
+                </Tabs.Tab>
+            </Tabs.List>
+
+            <Tabs.Panel value="tasks">
+                <Alert color="blue" title="Sentinel Agent">
+                    The background agent detected 2 new risks for your sites since login.
+                </Alert>
+                
+                {/* Dynamic Task Card Example */}
+                {mySites.length > 0 && (
+                    <Card withBorder mt="md">
+                        <Group justify="space-between">
+                            <Group>
+                                <ThemeIcon color="orange" variant="light"><AlertCircle size={18}/></ThemeIcon>
+                                <Text size="sm" fw={500}>Verify Informed Consent Dates ({mySites[0]})</Text>
+                            </Group>
+                            <Button size="xs" variant="subtle" onClick={() => onViewSite(mySites[0])}>Review</Button>
+                        </Group>
+                    </Card>
+                )}
+            </Tabs.Panel>
+
+            <Tabs.Panel value="smart_queries">
+                <Alert icon={<Brain size={16}/>} color="violet" mb="md" variant="light" title="Agent Insight">
+                    I have grouped <strong>{clusters.reduce((a,b)=>a+b.count,0)} individual issues</strong> into these systemic clusters.
+                </Alert>
+
+                <ScrollArea h={400}>
+                {clusters.map((cluster, i) => (
+                    <Card key={i} withBorder mb="sm" radius="md">
+                        <Group justify="space-between">
+                            <Group>
+                                <ThemeIcon color={cluster.severity === 'High' ? 'red' : 'orange'} size="lg" variant="light">
+                                    <MessageSquare size={20} />
+                                </ThemeIcon>
+                                <div>
+                                    <Group gap="xs">
+                                        <Text fw={600}>{cluster.issue}</Text>
+                                        <Badge variant="dot" color="gray">{cluster.site}</Badge>
+                                        <Badge variant="light" color="purple">Conf: {cluster.confidence}</Badge>
+                                    </Group>
+                                    <Text size="sm" c="dimmed" mt={4}>
+                                        Affected: <strong>{cluster.count} subjects</strong>. ({cluster.category})
+                                    </Text>
+                                </div>
+                            </Group>
+                            <Button onClick={handleBulkAction} rightSection={<ArrowRight size={16}/>} variant="light" color="violet">
+                                Bulk Create Query
+                            </Button>
+                        </Group>
+                        
+                        <Paper bg="gray.0" p="xs" mt="md" radius="sm">
+                            <Text size="xs" fw={700} c="dimmed" tt="uppercase">AI Recommendation</Text>
+                            <Text size="sm" style={{ fontFamily: 'monospace' }}>
+                                "{cluster.recommendation}"
+                            </Text>
+                        </Paper>
+                    </Card>
+                ))}
+                {clusters.length === 0 && (
+                    <Text c="dimmed" ta="center" py="xl">No clustered issues found for this study.</Text>
+                )}
+                </ScrollArea>
+            </Tabs.Panel>
+        </Tabs>
+      </Paper>
     </div>
   );
 }

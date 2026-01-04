@@ -1,88 +1,12 @@
-# from fastapi import APIRouter, Depends
-# from pydantic import BaseModel
-# from sqlalchemy.orm import Session
-# from sqlalchemy import text
-# from google import genai
-# from dotenv import load_dotenv
-# import os
-# from backend.app.core.database import get_db
-
-# load_dotenv()
-# router = APIRouter()
-
-# # Initialize Client
-# client = None
-# if os.getenv("GOOGLE_API_KEY"):
-#     client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
-
-# class ChatRequest(BaseModel):
-#     message: str
-#     study: str
-
-# SCHEMA_INFO = """
-# Tables:
-# - subjects (subject_id, site_id, status, study_name)
-# - raw_missing_pages (subject_id, site_id, form_name, visit_date, days_missing)
-# - raw_inactivated_forms (subject_id, site_id, form_name)
-# - raw_lab_issues (subject_id, site_id, test_name)
-# """
-
-# @router.post("/chat/query")
-# def chat_with_data(req: ChatRequest, db: Session = Depends(get_db)):
-#     if not client:
-#         return {"response": "AI Service unavailable."}
-
-#     # STEP 1: Generate SQL
-#     prompt = f"""
-#     You are a PostgreSQL expert. Write a SQL query to answer: "{req.message}"
-#     Context: Study '{req.study}'. Schema: {SCHEMA_INFO}
-#     Rules: 
-#     - Return ONLY the SQL string. No markdown.
-#     - Always filter by study_name = '{req.study}' if table has it.
-#     - Use ILIKE for text search.
-#     """
-    
-#     try:
-#         res = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
-#         sql_query = res.text.strip().replace("```sql", "").replace("```", "")
-        
-#         # Guardrail: Read-only only
-#         if not sql_query.upper().startswith("SELECT"):
-#             return {"response": "I can only perform read operations."}
-            
-#     except Exception as e:
-#         return {"response": f"Error generating query: {str(e)}"}
-
-#     # STEP 2: Execute SQL
-#     try:
-#         rows = db.execute(text(sql_query)).fetchall()
-#         data_str = str(rows[:10]) # Limit to 10 rows for context
-#     except Exception as e:
-#         return {"response": "Invalid SQL generated.", "sql": sql_query}
-
-#     # STEP 3: Summarize Results
-#     summary_prompt = f"""
-#     User Question: {req.message}
-#     Data Found: {data_str}
-    
-#     Answer the user concisely in plain English. If data is empty, say so.
-#     """
-    
-#     try:
-#         final_res = client.models.generate_content(model="gemini-2.0-flash", contents=summary_prompt)
-#         return {"response": final_res.text, "sql": sql_query}
-#     except:
-#         return {"response": "Error summarizing data.", "sql": sql_query}
-
-
-
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from dotenv import load_dotenv
 import os
+import time  # <--- Time tracking
 from backend.app.core.database import get_db
+from backend.app.api.analytics import log_ai_interaction  # <--- Import Logger
 
 # SDK IMPORTS
 from google import genai
@@ -163,6 +87,8 @@ def generate_ai_response(prompt):
 
 @router.post("/chat/query")
 def chat_with_data(req: ChatRequest, db: Session = Depends(get_db)):
+    start_time = time.time()
+    
     # STEP 1: Generate SQL
     prompt = f"""
     You are a PostgreSQL expert. Write a SQL query to answer: "{req.message}"
@@ -184,10 +110,29 @@ def chat_with_data(req: ChatRequest, db: Session = Depends(get_db)):
         raw_response = generate_ai_response(prompt)
         sql_query = raw_response.strip().replace("```sql", "").replace("```", "")
         
+        # --- 1. LOG SUCCESSFUL GENERATION ---
+        duration = round((time.time() - start_time) * 1000)
+        log_ai_interaction(
+            agent_name="SQL Agent",
+            input_text=req.message,
+            output_text=sql_query,
+            latency_ms=duration,
+            status="Success"
+        )
+        
         if not sql_query.upper().startswith("SELECT"):
             return {"response": "I can only perform read operations (SELECT)."}
             
     except Exception as e:
+        # --- 2. LOG ERROR GENERATION ---
+        duration = round((time.time() - start_time) * 1000)
+        log_ai_interaction(
+            agent_name="SQL Agent",
+            input_text=req.message,
+            output_text=f"Error: {str(e)}",
+            latency_ms=duration,
+            status="Error"
+        )
         return {"response": f"Error generating query: {str(e)}"}
 
     # STEP 2: Execute SQL
