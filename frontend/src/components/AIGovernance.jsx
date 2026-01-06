@@ -7,7 +7,7 @@ import {
   BrainCircuit, ShieldCheck, Activity, Terminal, 
   CheckCircle, XCircle, Clock 
 } from 'lucide-react';
-import axios from 'axios';
+import api from  "../api/client"
 
 export default function AIGovernance() {
   const [logs, setLogs] = useState([]);
@@ -18,7 +18,7 @@ export default function AIGovernance() {
   useEffect(() => {
     const fetchLogs = async () => {
       try {
-        const res = await axios.get('http://127.0.0.1:8000/api/analytics/ai-governance');
+        const res = await api.get('/api/analytics/ai-governance');
         setLogs(res.data.logs);
         setStats(res.data.stats);
         setLoading(false);

@@ -26,6 +26,8 @@ import ClarityChat from './components/ClarityChat';
 import DataSources from './components/DataSources'; // <--- Ensure this is imported
 import AIGovernance from './components/AIGovernance';
 
+import api from  "./api/client"
+
 export default function App() {
   return (
     <MantineProvider>
@@ -73,7 +75,7 @@ function DashboardShell({ userRole, onLogout }) {
   useEffect(() => {
     async function scanRisks() {
         try {
-            const res = await axios.get(`http://127.0.0.1:8000/api/sentinel/alerts?study=${study}`);
+            const res = await api.get(`/api/sentinel/alerts?study=${study}`);
             setAlerts(res.data.alerts || []);
         } catch (e) {
             console.error("Sentinel Offline");
@@ -86,7 +88,7 @@ function DashboardShell({ userRole, onLogout }) {
   useEffect(() => {
     async function loadStudies() {
         try {
-            const res = await axios.get("http://127.0.0.1:8000/api/analytics/study-list");
+            const res = await api.get("/api/analytics/study-list");
             if (res.data && res.data.length > 0) {
                 setAvailableStudies(res.data);
                 setStudy(res.data[0]); 
@@ -104,7 +106,7 @@ function DashboardShell({ userRole, onLogout }) {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const response = await axios.get(`http://127.0.0.1:8000/api/analytics/dashboard-metrics?study=${study}`);
+      const response = await api.get(`/api/analytics/dashboard-metrics?study=${study}`);
       setMetrics(response.data);
     } catch (err) {
       console.error(err);
@@ -132,7 +134,7 @@ function DashboardShell({ userRole, onLogout }) {
     formData.append("study_name", uploadStudy); 
 
     try {
-        await axios.post("http://127.0.0.1:8000/api/upload", formData);
+        await api.post("/api/upload", formData);
         setShowConfirm(false); 
         setSelectedFiles([]);
         alert("✅ Ingestion Complete!");
@@ -157,7 +159,7 @@ function DashboardShell({ userRole, onLogout }) {
 
     setAgentLoading(true);
     try {
-      const res = await axios.post(`http://127.0.0.1:8000/api/agent/draft-escalation`, {
+      const res = await api.post("/api/agent/draft-escalation", {
         site_id: targetSite,
         study_name: study
       });

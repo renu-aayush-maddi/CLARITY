@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Paper, Title, Text, Table, Badge, Group, Code, Loader, ThemeIcon } from '@mantine/core';
 import { Database, FileSpreadsheet, CheckCircle, AlertTriangle } from 'lucide-react';
-import axios from 'axios';
+import api from  "../api/client"
 
 export default function DataSources() {
   const [tables, setTables] = useState([]);
@@ -11,7 +11,7 @@ export default function DataSources() {
     async function fetchRealDataStats() {
         try {
             // CALLING THE REAL BACKEND
-            const res = await axios.get('http://127.0.0.1:8000/api/analytics/data-lineage');
+            const res = await api.get('/api/analytics/data-lineage');
             setTables(res.data);
         } catch (e) {
             console.error("Failed to fetch data stats", e);

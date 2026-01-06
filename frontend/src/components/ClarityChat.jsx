@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Drawer, TextInput, ActionIcon, ScrollArea, Box, Text, Paper, Avatar, Group, Code, Loader } from '@mantine/core';
 import { Send, Bot, User, Sparkles } from 'lucide-react';
 import axios from 'axios';
+import api from  "../api/client"
 
 export default function ClarityChat({ opened, onClose, study }) {
   const [messages, setMessages] = useState([
@@ -23,7 +24,7 @@ export default function ClarityChat({ opened, onClose, study }) {
     setLoading(true);
 
     try {
-      const res = await axios.post('http://127.0.0.1:8000/api/chat/query', {
+      const res = await api.post('/api/chat/query', {
         message: userMsg.content,
         study: study
       });

@@ -5,8 +5,7 @@ import {
   LoadingOverlay, Alert, Center, Loader, Stack 
 } from '@mantine/core';
 import { Activity, AlertTriangle, FileWarning, Calendar, User, Info } from 'lucide-react';
-import axios from 'axios';
-
+import api from  "../api/client"
 export default function SubjectProfile({ opened, onClose, study, subjectId }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -20,7 +19,7 @@ export default function SubjectProfile({ opened, onClose, study, subjectId }) {
 
       const encodedId = encodeURIComponent(subjectId);
 
-      axios.get(`http://127.0.0.1:8000/api/analytics/subject-details?study=${study}&subject_id=${encodedId}`)
+      api.get(`/api/analytics/subject-details?study=${study}&subject_id=${encodedId}`)
         .then(res => {
             if (res.data.error) {
                 setError(res.data.error);

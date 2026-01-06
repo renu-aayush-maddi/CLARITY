@@ -7,7 +7,7 @@ import {
   ClipboardList, CheckCircle, AlertCircle, 
   MessageSquare, ArrowRight, Brain 
 } from 'lucide-react';
-import axios from 'axios';
+import api from  "../api/client"
 
 export default function CRAWorkspace({ study, handleDraftEmail, onViewSite }) { 
   const [activeTab, setActiveTab] = useState('tasks');
@@ -21,12 +21,12 @@ export default function CRAWorkspace({ study, handleDraftEmail, onViewSite }) {
         setLoading(true);
         try {
             // A. Fetch Real Sites (Simulating "My Assigned Sites" by taking top 3)
-            const siteRes = await axios.get(`http://127.0.0.1:8000/api/analytics/sites-list?study=${study}`);
+            const siteRes = await api.get(`/api/analytics/sites-list?study=${study}`);
             const allSites = siteRes.data || [];
             setMySites(allSites.slice(0, 3)); 
 
             // B. Fetch Smart Clusters for this Study (Real Agentic Logic)
-            const clusterRes = await axios.get(`http://127.0.0.1:8000/api/agent/cluster-queries?study=${study}`);
+            const clusterRes = await api.get(`/api/agent/cluster-queries?study=${study}`);
             setClusters(clusterRes.data || []);
         } catch (e) {
             console.error("Workspace Load Error:", e);

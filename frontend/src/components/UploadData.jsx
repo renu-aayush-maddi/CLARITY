@@ -4,7 +4,7 @@ import {
   Paper, FileButton, List, ThemeIcon, Notification
 } from '@mantine/core';
 import { IconUpload, IconFileSpreadsheet, IconCheck, IconX } from '@tabler/icons-react';
-import axios from 'axios';
+import api from  "../api/client"
 
 export default function UploadData() {
   // State for the selected study and files
@@ -37,7 +37,7 @@ export default function UploadData() {
 
     try {
       // 2. Send to Backend
-      const response = await axios.post('http://localhost:8000/api/upload', formData, {
+      const response = await api.post('/api/upload', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
