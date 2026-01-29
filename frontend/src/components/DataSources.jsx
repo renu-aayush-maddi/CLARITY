@@ -1,17 +1,19 @@
 import { useState, useEffect } from 'react';
 import { Paper, Title, Text, Table, Badge, Group, Code, Loader, ThemeIcon } from '@mantine/core';
 import { Database, FileSpreadsheet, CheckCircle, AlertTriangle } from 'lucide-react';
-import api from  "../api/client"
+import api from "../api/client";
 
-export default function DataSources() {
+// FIX: Destructure 'study' from props
+export default function DataSources({ study }) {
   const [tables, setTables] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function fetchRealDataStats() {
+        setLoading(true);
         try {
-            // CALLING THE REAL BACKEND
-            const res = await api.get('/api/analytics/data-lineage');
+            // FIX: Pass study param to backend
+            const res = await api.get(`/api/analytics/data-lineage?study=${study}`);
             setTables(res.data);
         } catch (e) {
             console.error("Failed to fetch data stats", e);
@@ -19,8 +21,9 @@ export default function DataSources() {
             setLoading(false);
         }
     }
-    fetchRealDataStats();
-  }, []);
+    // Only run if study is defined
+    if (study) fetchRealDataStats();
+  }, [study]); // Re-run when 'study' changes
 
   return (
     <div style={{ padding: '20px' }}>
@@ -30,7 +33,7 @@ export default function DataSources() {
         </ThemeIcon>
         <div>
             <Title order={2}>Data Governance & Lineage</Title>
-            <Text c="dimmed">Live view of ingested datasets and record counts.</Text>
+            <Text c="dimmed">Live view of ingested datasets for <span style={{fontWeight:700}}>{study}</span>.</Text>
         </div>
       </Group>
 
@@ -71,6 +74,9 @@ export default function DataSources() {
                             </Table.Td>
                         </Table.Tr>
                     ))}
+                    {tables.length === 0 && (
+                         <Table.Tr><Table.Td colSpan={4} align="center">No data found.</Table.Td></Table.Tr>
+                    )}
                 </Table.Tbody>
             </Table>
         )}

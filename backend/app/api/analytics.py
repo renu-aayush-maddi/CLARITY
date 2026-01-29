@@ -1,4 +1,4 @@
-
+#analytics.py
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import text
@@ -44,74 +44,75 @@ def get_ai_governance_logs():
             "tokens_used": len(AUDIT_LOGS) * 150 # Simulated token count
         }
     }
+# backend/app/api/analytics.py
+# backend/app/api/analytics.py
 
 @router.get("/analytics/dashboard-metrics")
 def get_dashboard_metrics(study: str = "Study 1", db: Session = Depends(get_db)):
     """
-    ENTERPRISE DQI ENGINE (Compatible Format):
-    Calculates the Weighted Data Quality Index (0-100) but returns the JSON 
-    structure your Frontend already expects.
+    ROUND 2 FINAL LOGIC (CPID-DRIVEN):
+    Uses the pre-aggregated 'raw_cpid_metrics' table for robust scoring.
     """
     
-    # --- 1. ROBUST COUNTS (Direct Queries) ---
+    # --- 1. STRICT CLEAN PATIENT RATE (Using CPID Summary) ---
+    # We check the summary columns: missing_pages, missing_visits, open_queries, protocol_deviations
+    clean_patient_sql = text("""
+        SELECT 
+            COUNT(*) as total_subjects,
+            SUM(
+                CASE 
+                    WHEN missing_pages = 0 
+                     AND missing_visits = 0 
+                     AND open_queries = 0 
+                     AND protocol_deviations = 0 
+                    THEN 1 ELSE 0 
+                END
+            ) as clean_count
+        FROM raw_cpid_metrics
+        WHERE study_name = :study
+    """)
+    
     try:
-        # Total Subjects
-        sql_sub = text("SELECT COUNT(*) FROM subjects WHERE study_name = :study")
-        total_subjects = db.execute(sql_sub, {"study": study}).scalar() or 0
-        
-        # Missing Pages
-        sql_mp = text("SELECT COUNT(*) FROM raw_missing_pages WHERE study_name = :study")
-        total_missing = db.execute(sql_mp, {"study": study}).scalar() or 0
-        
-        # Protocol Deviations
-        sql_pd = text("SELECT COUNT(*) FROM raw_protocol_deviations WHERE study_name = :study")
-        total_pds = db.execute(sql_pd, {"study": study}).scalar() or 0
-        
+        cp_row = db.execute(clean_patient_sql, {"study": study}).fetchone()
+        total_subjects = cp_row[0] or 0
+        clean_count = cp_row[1] or 0
+        clean_rate = round((clean_count / total_subjects * 100), 1) if total_subjects > 0 else 0
     except Exception as e:
-        print(f"⚠️ Basic Count Error: {e}")
-        total_subjects, total_missing, total_pds = 0, 0, 0
+        print(f"Clean Patient Error: {e}")
+        # Fallback: Try counting subjects table if CPID is empty
+        total_subjects = db.execute(text("SELECT COUNT(*) FROM subjects WHERE study_name = :study"), {"study": study}).scalar() or 0
+        clean_count, clean_rate = 0, 0
 
-    # --- 2. DQI AGGREGATION (The Smart Math) ---
-    # We use this to replace the simple "Clean Patient Rate" with the advanced "DQI Score"
+    # --- 2. DQI & RISK BREAKDOWN (Using CPID + Safety) ---
     dqi_sql = text("""
     WITH SiteMetrics AS (
         SELECT 
-            s.site_id,
+            site_id,
             
-            -- 1. VISIT SCORE (30%)
-            COALESCE(
-                CAST(SUM(CASE WHEN vp.days_outstanding <= 0 THEN 1 ELSE 0 END) AS FLOAT) / 
-                NULLIF(COUNT(vp.id), 0) * 100, 
-            100) as visit_score,
+            -- A. VISIT SCORE (30%): Derived from 'missing_visits' column in CPID
+            GREATEST(0, 100 - (SUM(missing_visits) * 10)) as visit_score,
 
-            -- 2. QUERY SCORE (30%)
-            GREATEST(0, 100 - (
-                (SELECT COUNT(*) FROM raw_protocol_deviations pd 
-                 WHERE pd.site_id = s.site_id AND pd.study_name = :study) * 5
-            )) as query_score,
+            -- B. COMPLIANCE SCORE (30%): Derived from 'protocol_deviations'
+            GREATEST(0, 100 - (SUM(protocol_deviations) * 5)) as query_score,
 
-            -- 3. SAFETY SCORE (25%)
-            GREATEST(0, 100 - (
-                (SELECT COUNT(*) FROM raw_sae_safety sae 
-                 WHERE sae.site_id = s.site_id AND sae.case_status = 'Open') * 20
-            )) as safety_score,
+            -- C. SAFETY SCORE (25%): Derived from 'open_queries' (Proxy) or Safety Join
+            -- Ideally we join SAE table, but for robustness we use open queries as a risk signal
+            GREATEST(0, 100 - (SUM(open_queries) * 2)) as safety_score,
 
-            -- 4. CODING SCORE (15%)
-            COALESCE(
-                (SELECT CAST(SUM(CASE WHEN cm.coding_status = 'Coded' THEN 1 ELSE 0 END) AS FLOAT) / 
-                 NULLIF(COUNT(*), 0) * 100
-                 FROM raw_coding_meddra cm
-                 JOIN subjects sub ON cm.subject_id = sub.subject_id
-                 WHERE sub.site_id = s.site_id),
-            100) as coding_score
+            -- D. CODING SCORE (15%): Derived from 'clean_crf_percent'
+            COALESCE(AVG(clean_crf_percent), 100) as coding_score
 
-        FROM subjects s
-        LEFT JOIN raw_visit_projections vp ON s.subject_id = vp.subject_id
-        WHERE s.study_name = :study
-        GROUP BY s.site_id
+        FROM raw_cpid_metrics
+        WHERE study_name = :study
+        GROUP BY site_id
     )
     SELECT 
         site_id,
+        visit_score,
+        query_score,
+        safety_score,
+        coding_score,
+        -- Weighted Calculation
         ROUND(
             (visit_score * 0.30) + 
             (query_score * 0.30) + 
@@ -122,52 +123,57 @@ def get_dashboard_metrics(study: str = "Study 1", db: Session = Depends(get_db))
     ORDER BY final_dqi ASC
     """)
 
+    risky_sites = []
+    study_dqi_accumulator = []
+
     try:
         results = db.execute(dqi_sql, {"study": study}).fetchall()
-        
-        risky_sites = []
-        dqi_values = []
-        
         for row in results:
             site_id = row[0]
-            dqi = row[1] or 100
-            dqi_values.append(dqi)
+            final_dqi = row[5]
+            study_dqi_accumulator.append(final_dqi)
+
+            # Logic to find primary driver
+            scores = {"Visits": row[1], "Compliance": row[2], "Safety": row[3], "Coding": row[4]}
+            lowest_component = min(scores, key=scores.get)
             
-            # Risk is the inverse of Quality (100 - DQI)
-            risk_score = 100 - dqi
-            if risk_score > 0:
-                risky_sites.append({"site": site_id, "issues": risk_score}) # Mapped to 'issues' for frontend
+            risky_sites.append({
+                "site": site_id, 
+                "dqi_score": final_dqi, 
+                "primary_issue": lowest_component,
+                "components": scores
+            })
         
-        # Sort and Limit
-        risky_sites = sorted(risky_sites, key=lambda x: x['issues'], reverse=True)[:5]
+        # Sort by worst DQI first (Limit 5)
+        risky_sites = sorted(risky_sites, key=lambda x: x['dqi_score'])[:5]
         
-        # Average DQI
-        avg_dqi = sum(dqi_values) / len(dqi_values) if dqi_values else 100
+        avg_study_dqi = round(sum(study_dqi_accumulator) / len(study_dqi_accumulator)) if study_dqi_accumulator else 100
+
+        # --- 3. SAFETY OVERRIDE (CRITICAL) ---
+        # If we have real SAE data, we fetch it separately to flag "Critical Safety" alerts
+        sae_count = db.execute(text("""
+            SELECT COUNT(*) FROM raw_sae_safety s
+            JOIN subjects sub ON s.subject_id = sub.subject_id
+            WHERE sub.study_name = :study AND s.case_status = 'Open'
+        """), {"study": study}).scalar() or 0
+
+        # Calculate total missing pages from CPID for the dashboard card
+        total_missing_pages = db.execute(text("SELECT SUM(missing_pages) FROM raw_cpid_metrics WHERE study_name = :study"), {"study": study}).scalar() or 0
 
     except Exception as e:
-        print(f"⚠️ DQI Logic Error: {e}")
-        avg_dqi = 100
-        risky_sites = []
-        
-        # Fallback Risk Chart
-        try:
-             fallback_risk = db.execute(text("""
-                SELECT site_id, COUNT(*) as c FROM raw_missing_pages 
-                WHERE study_name = :study GROUP BY site_id ORDER BY c DESC LIMIT 5
-             """), {"study": study}).fetchall()
-             risky_sites = [{"site": r[0], "issues": r[1]} for r in fallback_risk]
-        except: pass
+        print(f"DQI Error: {e}")
+        avg_study_dqi, sae_count, total_missing_pages = 0, 0, 0
 
-    # --- 3. RETURN PAYLOAD (MATCHING YOUR WORKING FORMAT) ---
     return {
         "study_name": study,
-        "kpis": {
-            "total_subjects": total_subjects,
-            "total_pds": total_pds,
-            "total_missing_pages": total_missing,
-            # We inject the advanced DQI score into the "Clean Patient Rate" slot
-            "clean_patient_rate": f"{int(avg_dqi)}/100 (DQI)", 
-            "clean_patient_count": total_subjects # Placeholder
+        "study_health": {
+            "clean_patient_rate": clean_rate,
+            "avg_dqi_score": avg_study_dqi,
+            "readiness_status": "Ready for Interim" if clean_rate > 80 else "Action Required",
+            "total_patients": total_subjects,
+            "clean_patients": clean_count,
+            "critical_alerts": sae_count,          # <--- Populates "Critical Safety" Card
+            "total_missing_pages": total_missing_pages # <--- Populates "Missing Data" Card
         },
         "top_risky_sites": risky_sites
     }
@@ -262,13 +268,11 @@ def get_subject_details(study: str, subject_id: str, db: Session = Depends(get_d
     
     
 # ... existing imports ...
-
 @router.get("/analytics/data-lineage")
-def get_data_lineage(db: Session = Depends(get_db)):
+def get_data_lineage(study: str = None, db: Session = Depends(get_db)):
     """
-    REAL DATA: Returns the actual row counts for all system tables.
+    Returns row counts filtered by the specific study.
     """
-    # The list of tables we care about (from your diagnostic report)
     tables = [
         "subjects",
         "raw_missing_pages",
@@ -276,18 +280,38 @@ def get_data_lineage(db: Session = Depends(get_db)):
         "raw_inactivated_forms",
         "raw_visit_projections", 
         "raw_protocol_deviations",
-        "raw_cpid_metrics"
+        "raw_cpid_metrics",
+        "raw_sae_safety"
     ]
     
     stats = []
     
     for table_name in tables:
         try:
-            # Dynamic count query
-            count_sql = text(f"SELECT COUNT(*) FROM {table_name}")
-            row_count = db.execute(count_sql).scalar() or 0
+            # LOGIC: 
+            # 1. Some tables have 'study_name' directly (subjects, missing_pages, visit_projections).
+            # 2. Others (labs, inactivated) need to JOIN subjects to filter by study.
             
-            # Determine source type based on name
+            if not study:
+                # Fallback: Count everything if no study selected
+                count_sql = text(f"SELECT COUNT(*) FROM {table_name}")
+                params = {}
+            elif table_name in ["subjects", "raw_missing_pages", "raw_visit_projections"]:
+                # Direct Filter
+                count_sql = text(f"SELECT COUNT(*) FROM {table_name} WHERE study_name = :study")
+                params = {"study": study}
+            else:
+                # JOIN Filter (Link via subject_id)
+                count_sql = text(f"""
+                    SELECT COUNT(t.id) 
+                    FROM {table_name} t 
+                    JOIN subjects s ON t.subject_id = s.subject_id 
+                    WHERE s.study_name = :study
+                """)
+                params = {"study": study}
+
+            row_count = db.execute(count_sql, params).scalar() or 0
+            
             source_type = "System Core" if table_name == "subjects" else "Ingested (CSV/Excel)"
             
             stats.append({
@@ -295,7 +319,7 @@ def get_data_lineage(db: Session = Depends(get_db)):
                 "rows": row_count,
                 "status": "Active",
                 "type": source_type,
-                "last_updated": "Live" # In a real system, you'd check a timestamp column
+                "last_updated": "Live"
             })
         except Exception as e:
             print(f"Error checking {table_name}: {e}")

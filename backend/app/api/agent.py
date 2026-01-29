@@ -1,164 +1,4 @@
-# from fastapi import APIRouter, Depends
-# from pydantic import BaseModel
-# from sqlalchemy.orm import Session
-# from sqlalchemy import text
-# from dotenv import load_dotenv
-# import os
-# from backend.app.core.database import get_db
-
-# # SDK IMPORTS
-# from google import genai 
-# from openai import OpenAI
-
-# load_dotenv()
-# router = APIRouter()
-
-# # --- CONFIGURATION ---
-# AI_PROVIDER = os.getenv("AI_PROVIDER", "google").lower() # Defaults to google
-# GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-# OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-
-# gemini_client = None
-# openai_client = None
-
-# # Initialize the selected provider
-# if AI_PROVIDER == "google" and GOOGLE_API_KEY:
-#     try:
-#         gemini_client = genai.Client(api_key=GOOGLE_API_KEY)
-#         print("✅ Using AI Provider: Google Gemini")
-#     except Exception as e:
-#         print(f"⚠️ Gemini Init Error: {e}")
-
-# elif AI_PROVIDER == "openai" and OPENAI_API_KEY:
-#     try:
-#         openai_client = OpenAI(api_key=OPENAI_API_KEY)
-#         print("✅ Using AI Provider: OpenAI (ChatGPT)")
-#     except Exception as e:
-#         print(f"⚠️ OpenAI Init Error: {e}")
-# else:
-#     print(f"⚠️ Warning: Provider '{AI_PROVIDER}' selected but no valid API key found.")
-
-
-# class SiteAnalysisRequest(BaseModel):
-#     site_id: str
-#     study_name: str
-
-# @router.post("/agent/analyze-site")
-# def analyze_site_risk(req: SiteAnalysisRequest, db: Session = Depends(get_db)):
-#     """
-#     PATTERN 1: EMBEDDED AI PANEL (Multi-Model Support)
-#     Switchable between Google Gemini and OpenAI ChatGPT via .env
-#     """
-    
-#     # --- 1. GATHER DATA ---
-#     try:
-#         # A. Missing Pages
-#         mp_sql = text("""
-#             SELECT COUNT(*), MODE() WITHIN GROUP (ORDER BY form_name) 
-#             FROM raw_missing_pages 
-#             WHERE site_id = :site AND study_name = :study
-#         """)
-#         mp_res = db.execute(mp_sql, {"site": req.site_id, "study": req.study_name}).fetchone()
-#         missing_count = mp_res[0] or 0
-#         top_missing_form = mp_res[1] or "None"
-
-#         # B. Inactivated Forms
-#         inactive_sql = text("SELECT COUNT(*) FROM raw_inactivated_forms WHERE site_id = :site")
-#         inactive_count = db.execute(inactive_sql, {"site": req.site_id}).scalar() or 0
-
-#     except Exception as e:
-#         return {"analysis": f"Database Error: {str(e)}"}
-
-#     # --- 2. CONSTRUCT PROMPT ---
-#     prompt = f"""
-#     You are a Senior Clinical Data Manager. Analyze the risk profile for {req.site_id} in study {req.study_name}.
-    
-#     REAL DATA EVIDENCE:
-#     - Missing Pages: {missing_count} (Most affected form: {top_missing_form})
-#     - Inactivated/Deleted Forms: {inactive_count} (High counts indicate poor site staff training on EDC)
-    
-#     TASK:
-#     1. Determine the Primary Risk Category (Data Entry Compliance, Site Training, or Lab Protocol).
-#     2. Write a concise executive summary (approx 50 words) explaining the operational bottleneck.
-#     3. Recommend ONE targeted action for the Site Monitor.
-
-#     OUTPUT FORMAT:
-#     **Primary Risk:** [Category]
-#     **Analysis:** [Summary]
-#     **Next Best Action:** [Recommendation]
-#     """
-
-#     # --- 3. CALL AI (SWITCH LOGIC) ---
-#     try:
-#         if AI_PROVIDER == "openai" and openai_client:
-#             # CALL CHATGPT
-#             response = openai_client.chat.completions.create(
-#                 model="gpt-4o", # or "gpt-3.5-turbo"
-#                 messages=[
-#                     {"role": "system", "content": "You are a helpful clinical trial assistant."},
-#                     {"role": "user", "content": prompt}
-#                 ]
-#             )
-#             return {"analysis": response.choices[0].message.content}
-
-#         elif AI_PROVIDER == "google" and gemini_client:
-#             # CALL GEMINI
-#             response = gemini_client.models.generate_content(
-#                 model="gemini-2.0-flash", 
-#                 contents=prompt
-#             )
-#             return {"analysis": response.text}
-
-#         else:
-#             return {"analysis": f"AI Provider '{AI_PROVIDER}' is not configured correctly."}
-
-#     except Exception as e:
-#         return {"analysis": f"AI Generation Error: {str(e)}"}
-    
-    
-    
-# # ... existing imports ...
-
-# @router.get("/agent/cluster-queries")
-# def cluster_queries(site_id: str = None, db: Session = Depends(get_db)):
-#     """
-#     PATTERN 2: AGENTIC CLUSTERING (For CRA)
-#     Groups hundreds of individual lab issues into 'smart clusters' for bulk action.
-#     """
-#     # 1. Get open lab issues (using real data from raw_lab_issues)
-#     # We group by Test Name to find systemic errors (e.g., "All Hemoglobin units wrong")
-#     sql = text("""
-#         SELECT site_id, lab_category, test_name, COUNT(*) as count 
-#         FROM raw_lab_issues 
-#         WHERE (:site IS NULL OR site_id = :site)
-#         GROUP BY site_id, lab_category, test_name
-#         HAVING COUNT(*) > 2
-#         ORDER BY count DESC
-#     """)
-    
-#     params = {"site": site_id} if site_id else {"site": None}
-#     rows = db.execute(sql, params).fetchall()
-    
-#     clusters = []
-#     for r in rows:
-#         # AGENT LOGIC: Determine severity based on volume
-#         severity = "High" if r.count > 10 else "Medium"
-        
-#         clusters.append({
-#             "group_id": f"{r.site_id}_{r.test_name}",
-#             "site": r.site_id,
-#             "category": r.lab_category,
-#             "issue": f"Systemic {r.test_name} Issue",
-#             "count": r.count,
-#             "recommendation": f"Bulk Query: Clarify {r.test_name} units/ranges for {r.count} subjects.",
-#             "severity": severity,
-#             "confidence": "92%"
-#         })
-        
-#     return clusters
-
-
-
+#agent.py
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -308,3 +148,46 @@ def cluster_queries(study: str, db: Session = Depends(get_db)):
     except Exception as e:
         print(f"Cluster Error: {e}")
         return []
+    
+
+class DQIContextRequest(BaseModel):
+    site_id: str
+    dqi_score: float
+    study_name: str
+    components: dict # We pass the breakdown here to save DB calls
+
+@router.post("/agent/explain-dqi")
+def explain_dqi_score(req: DQIContextRequest):
+    """
+    EXPLAINABILITY AGENT:
+    Translates the mathematical DQI score into a human-readable explanation.
+    """
+    
+    # Identify the drag factors
+    low_scores = [k for k, v in req.components.items() if v < 80]
+    
+    prompt = f"""
+    You are a Clinical Operations AI. 
+    Analyze Site: {req.site_id} for Study: {req.study_name}.
+    
+    Current DQI Score: {req.dqi_score}/100.
+    Component Scores: {req.components}
+    
+    The low performing areas are: {low_scores}.
+    
+    Task:
+    1. Explain WHY the score is low in one professional sentence.
+    2. If "Safety" is low, emphasize urgent patient risk.
+    3. If "Visits" is low, emphasize operational lag.
+    4. Provide one specific action for the CRA (Clinical Research Associate).
+    
+    Keep it under 50 words.
+    """
+    
+    explanation = generate_ai_content(prompt, model_type="fast")
+    
+    return {
+        "site_id": req.site_id,
+        "explanation": explanation,
+        "suggested_action": "Initiate Safety Audit" if "Safety" in low_scores else "Retrain Site Staff"
+    }

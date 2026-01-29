@@ -13,7 +13,7 @@ export default function AgentPanel({ metrics, handleDraftEmail, agentLoading, em
                 <Sparkles size={20} />
             </ThemeIcon>
             <div>
-                <Text fw={600}>Clarity Copilot</Text>
+                <Text fw={600} Clarity Copilot />
                 <Text size="xs" c="dimmed">AI-Driven Action Items</Text>
             </div>
         </Group>
@@ -31,11 +31,12 @@ export default function AgentPanel({ metrics, handleDraftEmail, agentLoading, em
                 <Button 
                    fullWidth 
                    color="violet" 
-                   onClick={handleDraftEmail} 
+                   // FIX: Use arrow function to pass string, NOT the event object
+                   onClick={() => handleDraftEmail(topSite)} 
                    loading={agentLoading}
                    disabled={loading || !hasRisk}
                 >
-                    Generate Escalation Email
+                   Generate Escalation Email
                 </Button>
             ) : (
                 <div style={{ animation: 'fadeIn 0.3s ease' }}>
@@ -48,7 +49,7 @@ export default function AgentPanel({ metrics, handleDraftEmail, agentLoading, em
                             variant="unstyled" 
                             p="xs" 
                             minRows={6}
-                            value={`${emailDraft.generated_email.subject}\n\n${emailDraft.generated_email.body}`}
+                            value={typeof emailDraft === 'string' ? emailDraft : `${emailDraft.generated_email?.subject}\n\n${emailDraft.generated_email?.body}`}
                             readOnly
                         />
                     </div>

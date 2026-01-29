@@ -1,3 +1,4 @@
+# backend/app/utils/column_mappings.py
 COLUMN_MAPPINGS = {
     # 1. SUBJECT METRICS (Master List)
     "raw_cpid_metrics": {

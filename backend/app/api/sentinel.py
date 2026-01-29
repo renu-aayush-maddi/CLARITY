@@ -26,13 +26,29 @@ def get_smart_alerts(study: str, db: Session = Depends(get_db)):
     """)
     ghosts = db.execute(ghost_sql, {"study": study}).fetchall()
     
+# ... inside get_smart_alerts ...
+    
     for row in ghosts:
         alerts.append({
             "type": "risk",
             "severity": "high",
             "title": f"Operational Risk: {row.site_id}",
-            "message": f"Agent detected {row.missing_count} missing pages. This exceeds the threshold of 15.",
-            "action": "Schedule Monitoring Visit"
+            "message": f"Agent detected {row.missing_count} missing pages. This exceeds the threshold.",
+            
+            # THE "AGENTIC" UPGRADE
+            "action_payload": {
+                "action_type": "email_draft",
+                "recipient": "Site Coordinator",
+                "subject": f"ACTION REQUIRED: Missing Data at {row.site_id}",
+                "body_preview": f"Dear Site Team, our system flagged {row.missing_count} pages outstanding > 30 days. Please resolve by..."
+            },
+            
+            # THE "DECISION TRACE" (Governance)
+            "decision_basis": {
+                "rule": "Ghost Site Protocol",
+                "trigger_value": row.missing_count,
+                "threshold": 15
+            }
         })
 
     # RULE 2: Detect "Training Gaps" (High Inactivated Forms)
