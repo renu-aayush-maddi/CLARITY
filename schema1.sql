@@ -2,7 +2,7 @@
 
 CREATE TABLE raw_coding_meddra (
 	id SERIAL NOT NULL, 
-	subject_id TEXT, 
+	subject_id VARCHAR(150), 
 	term TEXT, 
 	coding_status TEXT, 
 	CONSTRAINT raw_coding_meddra_pkey PRIMARY KEY (id)
@@ -10,7 +10,7 @@ CREATE TABLE raw_coding_meddra (
 
 CREATE TABLE raw_coding_whodra (
 	id SERIAL NOT NULL, 
-	subject_id TEXT, 
+	subject_id VARCHAR(150), 
 	trade_name TEXT, 
 	coding_status TEXT, 
 	CONSTRAINT raw_coding_whodra_pkey PRIMARY KEY (id)
@@ -18,7 +18,7 @@ CREATE TABLE raw_coding_whodra (
 
 CREATE TABLE raw_sae_dm (
 	id SERIAL NOT NULL, 
-	subject_id TEXT, 
+	subject_id VARCHAR(150), 
 	discrepancy_id TEXT, 
 	action_status TEXT, 
 	site_id VARCHAR(255), 
@@ -27,7 +27,7 @@ CREATE TABLE raw_sae_dm (
 
 CREATE TABLE raw_sae_safety (
 	id SERIAL NOT NULL, 
-	subject_id TEXT, 
+	subject_id VARCHAR(150), 
 	case_status TEXT, 
 	review_status TEXT, 
 	site_id VARCHAR(255), 
@@ -44,7 +44,7 @@ CREATE TABLE raw_sdv_metrics (
 );
 
 CREATE TABLE subjects (
-	subject_id TEXT NOT NULL, 
+	subject_id VARCHAR(150) NOT NULL, 
 	site_id TEXT, 
 	study_id TEXT, 
 	country TEXT, 
@@ -56,7 +56,7 @@ CREATE TABLE subjects (
 
 CREATE TABLE raw_cpid_metrics (
 	id SERIAL NOT NULL, 
-	subject_id TEXT, 
+	subject_id VARCHAR(150), 
 	site_id TEXT, 
 	study_name TEXT, 
 	country TEXT, 
@@ -98,7 +98,7 @@ CREATE TABLE raw_inactivated_forms (
 
 CREATE TABLE raw_lab_issues (
 	id SERIAL NOT NULL, 
-	subject_id TEXT, 
+	subject_id VARCHAR(150), 
 	site_id TEXT, 
 	country TEXT, 
 	visit TEXT, 
@@ -111,7 +111,7 @@ CREATE TABLE raw_lab_issues (
 
 CREATE TABLE raw_missing_pages (
 	id SERIAL NOT NULL, 
-	subject_id TEXT, 
+	subject_id VARCHAR(150), 
 	site_id TEXT, 
 	form_name TEXT, 
 	visit_date TEXT, 
@@ -123,7 +123,7 @@ CREATE TABLE raw_missing_pages (
 
 CREATE TABLE raw_protocol_deviations (
 	id SERIAL NOT NULL, 
-	subject_id TEXT, 
+	subject_id VARCHAR(150), 
 	site_id TEXT, 
 	category TEXT, 
 	pd_status TEXT, 
@@ -135,7 +135,7 @@ CREATE TABLE raw_protocol_deviations (
 
 CREATE TABLE raw_visit_projections (
 	id SERIAL NOT NULL, 
-	subject_id TEXT, 
+	subject_id VARCHAR(150), 
 	site_id TEXT, 
 	study_name TEXT, 
 	country TEXT, 
