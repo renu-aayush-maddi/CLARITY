@@ -332,3 +332,50 @@ def get_data_lineage(study: str = None, db: Session = Depends(get_db)):
             })
             
     return stats
+
+
+# backend/app/api/analytics.py
+
+@router.get("/analytics/portfolio-summary")
+def get_portfolio_summary(db: Session = Depends(get_db)):
+    """
+    LEVEL 1: GLOBAL PORTFOLIO VIEW
+    Returns high-level health metrics for ALL studies to support the "Executive View".
+    """
+    # 1. Get list of all studies present in the metrics table
+    studies = db.execute(text("SELECT DISTINCT study_name FROM raw_cpid_metrics")).fetchall()
+    study_list = [r[0] for r in studies if r[0]]
+    
+    portfolio = []
+    
+    for study in study_list:
+        try:
+            # Quick Health Check for this specific study
+            # A. Clean Patient Rate
+            clean_sql = text("""
+                SELECT COUNT(*) as total,
+                SUM(CASE WHEN missing_pages=0 AND missing_visits=0 AND open_queries=0 AND protocol_deviations=0 THEN 1 ELSE 0 END) as clean
+                FROM raw_cpid_metrics WHERE study_name = :study
+            """)
+            row = db.execute(clean_sql, {"study": study}).fetchone()
+            total = row[0] or 0
+            clean = row[1] or 0
+            clean_rate = round((clean/total * 100), 1) if total > 0 else 0
+            
+            # B. Determine Status
+            status = "Healthy"
+            if clean_rate < 85: status = "At Risk"
+            if clean_rate < 70: status = "Critical"
+            
+            portfolio.append({
+                "study_name": study,
+                "total_patients": total,
+                "clean_patient_rate": clean_rate,
+                "status": status
+            })
+        except Exception as e:
+            print(f"Portfolio Error {study}: {e}")
+            continue
+            
+    # Sort: Critical studies first (Prioritization)
+    return sorted(portfolio, key=lambda x: x['clean_patient_rate'])

@@ -1,170 +1,189 @@
 import { useState, useEffect } from 'react';
-import { Paper, Title, Select, Table, Badge, Group, Text, Loader, Center, Grid } from '@mantine/core';
-import { useDisclosure } from '@mantine/hooks';
-import axios from 'axios';
-import { AlertTriangle, CheckCircle, FileWarning } from 'lucide-react';
-import SubjectProfile from './SubjectProfile';
-import AISidebar from './AISidebar'; // <--- IMPORT
-import api from  "../api/client"
+import { Card, Table, Badge, Button, Group, Text, Title, Select, Modal, Stack, Divider, List, ThemeIcon, Loader, Grid } from '@mantine/core';
+import { User, FileWarning, AlertTriangle, Activity } from 'lucide-react'; 
+import api from '../api/client';
+import AISidebar from './AISidebar'; // <--- RESTORED IMPORT
 
 export default function SiteReport({ study }) {
-  const [sites, setSites] = useState([]);
-  const [selectedSite, setSelectedSite] = useState(null);
-  const [reportData, setReportData] = useState(null);
-  const [loading, setLoading] = useState(false);
-
-  // AI State
-  const [aiAnalysis, setAiAnalysis] = useState(null);
-  const [aiLoading, setAiLoading] = useState(false);
-
-  // Modal State
-  const [profileOpened, { open: openProfile, close: closeProfile }] = useDisclosure(false);
-  const [selectedSubject, setSelectedSubject] = useState(null);
-
-  const handleRowClick = (subjectId) => {
-      setSelectedSubject(subjectId);
-      openProfile();
-  };
-
-  useEffect(() => {
-    async function fetchSites() {
-      try {
-        const res = await api.get(`/api/analytics/sites-list?study=${study}`);
-        setSites(res.data);
-        if (res.data.length > 0) setSelectedSite(res.data[0]);
-      } catch (e) { console.error(e); }
-    }
-    fetchSites();
-  }, [study]);
-
-  // Fetch Table Data & AI Analysis when site changes
-  useEffect(() => {
-    if (!selectedSite) return;
+    const [sites, setSites] = useState([]);
+    const [selectedSite, setSelectedSite] = useState(null);
+    const [subjects, setSubjects] = useState([]);
     
-    // 1. Fetch Table Data
-    setLoading(true);
-    api.get(`/api/analytics/site-details?study=${study}&site_id=${selectedSite}`)
-        .then(res => setReportData(res.data))
-        .catch(console.error)
-        .finally(() => setLoading(false));
+    // PATIENT 360 STATE
+    const [selectedPatient, setSelectedPatient] = useState(null);
+    const [patientDetails, setPatientDetails] = useState(null);
 
-    // 2. Fetch AI Analysis (Independent Call)
-    fetchAIAnalysis();
-    
-  }, [selectedSite, study]);
+    // AI STATE (RESTORED)
+    const [aiAnalysis, setAiAnalysis] = useState(null);
+    const [aiLoading, setAiLoading] = useState(false);
 
-  const fetchAIAnalysis = async () => {
-    setAiLoading(true);
-    setAiAnalysis(null);
-    try {
-        const res = await api.post('/api/agent/analyze-site', {
-            site_id: selectedSite,
-            study_name: study
+    // 1. Load Sites
+    useEffect(() => {
+        if(!study) return;
+        api.get(`/api/analytics/sites-list?study=${study}`).then(res => {
+            setSites(res.data);
+            if(res.data.length > 0) setSelectedSite(res.data[0]);
         });
-        setAiAnalysis(res.data.analysis);
-    } catch (e) {
-        console.error(e);
-        setAiAnalysis("Unable to generate analysis.");
-    } finally {
-        setAiLoading(false);
-    }
-  };
+    }, [study]);
 
-  return (
-    <div style={{ padding: '20px', height: '100%' }}>
-      <Group justify="space-between" mb="lg">
-        <div>
-           <Title order={3}>Site Performance Drill-Down</Title>
-           <Text c="dimmed" size="sm">Deep dive into subject-level compliance</Text>
-        </div>
-        <Select 
-            label="Select Site"
-            data={sites}
-            value={selectedSite}
-            onChange={setSelectedSite}
-            searchable
-            allowDeselect={false}
-        />
-      </Group>
-
-      {/* NEW GRID LAYOUT */}
-      <Grid gutter="lg">
+    // 2. Load Subjects & Trigger AI Analysis when Site Changes
+    useEffect(() => {
+        if(!selectedSite || !study) return;
         
-        {/* LEFT COLUMN: TABLE (75%) */}
-        <Grid.Col span={{ base: 12, md: 9 }}>
-            {loading ? (
-                <Center h={200}><Loader /></Center>
-            ) : (
-                <Paper withBorder radius="md" overflow="hidden">
-                    <Table striped highlightOnHover>
-                        <Table.Thead>
-                        <Table.Tr>
-                            <Table.Th>Subject ID</Table.Th>
-                            <Table.Th>Status</Table.Th>
-                            <Table.Th>Missing Pages</Table.Th>
-                            <Table.Th>Protocol Deviations</Table.Th>
-                            <Table.Th>Data Quality</Table.Th>
-                        </Table.Tr>
-                        </Table.Thead>
-                        <Table.Tbody>
-                        {reportData?.subjects?.map((sub) => (
-                            <Table.Tr 
-                                key={sub.subject_id}
-                                onClick={() => handleRowClick(sub.subject_id)}
-                                style={{ cursor: 'pointer' }}
-                            >
-                            <Table.Td fw={500}>{sub.subject_id}</Table.Td>
-                            <Table.Td><Badge color={sub.status === 'Active' ? 'blue' : 'gray'}>{sub.status}</Badge></Table.Td>
-                            <Table.Td>
-                                {sub.missing_pages > 0 ? (
-                                    <Badge color="red" variant="light" leftSection={<FileWarning size={12}/>}>
-                                    {sub.missing_pages} Pages
-                                    </Badge>
-                                ) : <Text c="dimmed" size="sm">-</Text>}
-                            </Table.Td>
-                            <Table.Td>
-                                {sub.deviations > 0 ? (
-                                    <Badge color="orange" variant="light" leftSection={<AlertTriangle size={12}/>}>
-                                    {sub.deviations} Deviations
-                                    </Badge>
-                                ) : <Text c="dimmed" size="sm">-</Text>}
-                            </Table.Td>
-                            <Table.Td>
-                                {sub.is_clean ? (
-                                    <Badge color="green" leftSection={<CheckCircle size={12}/>}>Clean</Badge>
-                                ) : (
-                                    <Badge color="red">Action Required</Badge>
+        // Fetch Table Data
+        api.get(`/api/analytics/site-details?study=${study}&site_id=${selectedSite}`).then(res => {
+            setSubjects(res.data.subjects);
+        });
+
+        // Fetch AI Analysis (RESTORED LOGIC)
+        fetchAIAnalysis();
+
+    }, [selectedSite, study]);
+
+    const fetchAIAnalysis = async () => {
+        setAiLoading(true);
+        setAiAnalysis(null);
+        try {
+            const res = await api.post('/api/agent/analyze-site', {
+                site_id: selectedSite,
+                study_name: study
+            });
+            setAiAnalysis(res.data.analysis);
+        } catch (e) {
+            console.error(e);
+            setAiAnalysis("Unable to generate analysis.");
+        } finally {
+            setAiLoading(false);
+        }
+    };
+
+    // 3. Load Specific Patient Details
+    const handlePatientClick = async (subjectId) => {
+        setSelectedPatient(subjectId);
+        try {
+            const res = await api.get(`/api/analytics/subject-details?study=${study}&subject_id=${subjectId}`);
+            setPatientDetails(res.data);
+        } catch(e) {
+            console.error(e);
+        }
+    };
+
+    return (
+        <div style={{ padding: '20px' }}>
+            <Group mb="md" justify="space-between">
+                <div>
+                    <Title order={3}>Site & Patient Drill-Down</Title>
+                    <Text c="dimmed" size="sm">Deep dive into subject-level compliance & AI Risk Assessment</Text>
+                </div>
+                <Select 
+                    label="Select Site" 
+                    data={sites} 
+                    value={selectedSite} 
+                    onChange={setSelectedSite} 
+                    searchable
+                    allowDeselect={false}
+                />
+            </Group>
+
+            {/* RESTORED GRID LAYOUT */}
+            <Grid gutter="lg">
+                
+                {/* LEFT COL: TABLE (75%) */}
+                <Grid.Col span={{ base: 12, md: 9 }}>
+                    <Card withBorder radius="md">
+                        <Table striped highlightOnHover>
+                            <Table.Thead>
+                                <Table.Tr>
+                                    <Table.Th>Subject ID</Table.Th>
+                                    <Table.Th>Missing Pages</Table.Th>
+                                    <Table.Th>Deviations</Table.Th>
+                                    <Table.Th>Status</Table.Th>
+                                    <Table.Th>Action</Table.Th>
+                                </Table.Tr>
+                            </Table.Thead>
+                            <Table.Tbody>
+                                {subjects.map(sub => (
+                                    <Table.Tr key={sub.subject_id}>
+                                        <Table.Td fw={500}>{sub.subject_id}</Table.Td>
+                                        <Table.Td c={sub.missing_pages > 0 ? 'red' : 'dimmed'}>{sub.missing_pages}</Table.Td>
+                                        <Table.Td>{sub.deviations}</Table.Td>
+                                        <Table.Td>
+                                            {sub.is_clean ? <Badge color="green">Clean</Badge> : <Badge color="red">Attention</Badge>}
+                                        </Table.Td>
+                                        <Table.Td>
+                                            <Button size="xs" variant="subtle" onClick={() => handlePatientClick(sub.subject_id)}>
+                                                View 360°
+                                            </Button>
+                                        </Table.Td>
+                                    </Table.Tr>
+                                ))}
+                                {subjects.length === 0 && (
+                                    <Table.Tr><Table.Td colSpan={5} align="center">No subjects found.</Table.Td></Table.Tr>
                                 )}
-                            </Table.Td>
-                            </Table.Tr>
-                        ))}
-                        {reportData?.subjects?.length === 0 && (
-                            <Table.Tr><Table.Td colSpan={5} align="center">No subjects found for this site</Table.Td></Table.Tr>
-                        )}
-                        </Table.Tbody>
-                    </Table>
-                </Paper>
-            )}
-        </Grid.Col>
+                            </Table.Tbody>
+                        </Table>
+                    </Card>
+                </Grid.Col>
 
-        {/* RIGHT COLUMN: AI SIDEBAR (25%) */}
-        <Grid.Col span={{ base: 12, md: 3 }}>
-            <AISidebar 
-                siteId={selectedSite} 
-                analysis={aiAnalysis} 
-                loading={aiLoading} 
-                onRefresh={fetchAIAnalysis}
-            />
-        </Grid.Col>
+                {/* RIGHT COL: AI SIDEBAR (25%) - RESTORED */}
+                <Grid.Col span={{ base: 12, md: 3 }}>
+                    <AISidebar 
+                        siteId={selectedSite} 
+                        analysis={aiAnalysis} 
+                        loading={aiLoading} 
+                        onRefresh={fetchAIAnalysis}
+                    />
+                </Grid.Col>
 
-      </Grid>
+            </Grid>
 
-      <SubjectProfile 
-         opened={profileOpened} 
-         onClose={closeProfile} 
-         study={study} 
-         subjectId={selectedSubject} 
-      />
-    </div>
-  );
+            {/* PATIENT 360 MODAL */}
+            <Modal 
+                opened={!!selectedPatient} 
+                onClose={() => {setSelectedPatient(null); setPatientDetails(null);}}
+                title={<Group><User size={18}/><Text fw={700}>Patient 360: {selectedPatient}</Text></Group>}
+                size="lg"
+            >
+                {patientDetails ? (
+                    <Stack>
+                        <Group grow>
+                            <Card withBorder padding="xs" radius="md">
+                                <Text size="xs" c="dimmed">Status</Text>
+                                <Text fw={700}>{patientDetails.status}</Text>
+                            </Card>
+                            <Card withBorder padding="xs" radius="md">
+                                <Text size="xs" c="dimmed">Site ID</Text>
+                                <Text fw={700}>{patientDetails.site_id}</Text>
+                            </Card>
+                        </Group>
+
+                        <Divider label="Risk Factors" labelPosition="center"/>
+
+                        <List spacing="sm">
+                            <List.Item icon={<ThemeIcon color="red" size={20} radius="xl"><FileWarning size={12}/></ThemeIcon>}>
+                                <strong>{patientDetails.metrics?.missing_count || 0}</strong> Missing Pages
+                            </List.Item>
+                            <List.Item icon={<ThemeIcon color="orange" size={20} radius="xl"><AlertTriangle size={12}/></ThemeIcon>}>
+                                <strong>{patientDetails.metrics?.deviation_count || 0}</strong> Protocol Deviations
+                            </List.Item>
+                            <List.Item icon={<ThemeIcon color="blue" size={20} radius="xl"><Activity size={12}/></ThemeIcon>}>
+                                <strong>{patientDetails.metrics?.sae_count || 0}</strong> Safety Events
+                            </List.Item>
+                        </List>
+
+                        <Card bg="gray.1" radius="md">
+                            <Text size="sm" fw={600}>🤖 Agent Recommendation:</Text>
+                            <Text size="sm" mt={5}>
+                                {patientDetails.metrics?.missing_count > 0 
+                                    ? "Flag for immediate CRA follow-up during next monitoring visit." 
+                                    : "No immediate actions required. Continue monitoring."}
+                            </Text>
+                        </Card>
+                    </Stack>
+                ) : (
+                    <Loader />
+                )}
+            </Modal>
+        </div>
+    );
 }
