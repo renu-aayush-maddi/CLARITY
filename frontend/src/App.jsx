@@ -5,7 +5,7 @@ import {
   Select, Button, FileButton, Text, Title, 
   LoadingOverlay, ScrollArea, Avatar,
   ThemeIcon, Paper, Stack, ActionIcon,
-  Indicator, Menu, Badge, Card, Modal, Textarea, Autocomplete
+  Indicator, Menu, Badge, Card, Modal, Textarea, Autocomplete, Popover
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { 
@@ -25,6 +25,7 @@ import ClarityChat from './components/ClarityChat';
 import DataSources from './components/DataSources'; 
 import AIGovernance from './components/AIGovernance';
 import Portfolio from './components/Portfolio';
+import TourStep from './components/GuidedTour/TourStep'; // Import the new component
 
 import api from  "./api/client"
 
@@ -38,17 +39,21 @@ export default function App() {
 
 function MainFlow() {
     const [userRole, setUserRole] = useState(null); 
+    const [tourActive, setTourActive] = useState(false);
 
     if (!userRole) {
-        return <LandingPage onSelectRole={setUserRole} />;
+        return <LandingPage onSelectRole={setUserRole} onStartTour={() => setTourActive(true)} tourActive={tourActive} />;
     }
 
-    return <DashboardShell userRole={userRole} onLogout={() => setUserRole(null)} />;
+    return <DashboardShell userRole={userRole} onLogout={() => { setUserRole(null); setTourActive(false); }} tourActive={tourActive} setTourActive={setTourActive} />;
 }
 
-function DashboardShell({ userRole, onLogout }) {
+function DashboardShell({ userRole, onLogout, tourActive, setTourActive }) {
   const [mobileOpened, { toggle: toggleMobile }] = useDisclosure();
   const [desktopOpened, { toggle: toggleDesktop }] = useDisclosure(true);
+
+  // Tour State
+  const [tourStep, setTourStep] = useState(0);
 
   // --- APP STATE ---
   const [study, setStudy] = useState("Study 1");
@@ -77,6 +82,11 @@ function DashboardShell({ userRole, onLogout }) {
     setActiveView('overview');
 };
 
+  // --- TOUR HELPERS ---
+  const TotalSteps = 4;
+  
+  // NOTE: getTourStyle is no longer needed as TourStep component handles it
+  
   // --- FETCH SENTINEL ALERTS ---
   useEffect(() => {
     async function scanRisks() {
@@ -191,6 +201,21 @@ function DashboardShell({ userRole, onLogout }) {
   return (
     <div style={{ position: 'relative', width: '100vw', height: '100vh' }}>
       
+      {/* TOUR OVERLAY - Blurs everything when tour is active */}
+      {tourActive && (
+        <div style={{
+          position: 'fixed',
+          top: 0, 
+          left: 0, 
+          width: '100%', 
+          height: '100%', 
+          backgroundColor: 'rgba(0, 0, 0, 0.4)', 
+          backdropFilter: 'blur(3px)',
+          zIndex: 1000, 
+          pointerEvents: 'none' // Allows clicks to pass through if needed, but mainly for visual
+        }} />
+      )}
+
       {/* CONFIRM UPLOAD OVERLAY */}
 {/* CONFIRM UPLOAD OVERLAY */}
       {showConfirm && (
@@ -252,7 +277,7 @@ function DashboardShell({ userRole, onLogout }) {
         padding="md"
         layout="alt"
       >
-        <AppShell.Header>
+        <AppShell.Header zIndex={tourActive && tourStep < 3 ? 1001 : 101}>
           <Group h="100%" px="md" justify="space-between">
             <Group>
               <Burger opened={mobileOpened} onClick={toggleMobile} hiddenFrom="sm" size="sm" />
@@ -265,20 +290,30 @@ function DashboardShell({ userRole, onLogout }) {
             <Group>
               
               {/* SENTINEL NOTIFICATION BELL (UPDATED) */}
-              <Menu shadow="md" width={320} position="bottom-end">
-                <Menu.Target>
-                  <ActionIcon variant="transparent" size="lg" color="gray">
-                    <Indicator color="red" size={10} disabled={alerts.length === 0} processing>
-                       <Bell size={20} />
-                    </Indicator>
-                  </ActionIcon>
-                </Menu.Target>
-
-                <Menu.Dropdown>
+              <TourStep
+                  stepIndex={0}
+                  currentStep={tourStep}
+                  tourActive={tourActive}
+                  onNext={() => setTourStep(1)}
+                  onFinish={() => setTourActive(false)}
+                  title="Activity Alerts"
+                  content="Check here for high-priority risk notifications and agent escalations."
+                  position="bottom-end"
+              >
+                  {/* Wrapper for Menu Target */}
+                  <Menu shadow="md" width={320} position="bottom-end">  
+                    <Menu.Target>
+                      <ActionIcon variant="transparent" size="lg" color="gray">
+                        <Indicator color="red" size={10} disabled={alerts.length === 0} processing>
+                            <Bell size={20} />
+                        </Indicator>
+                      </ActionIcon>
+                    </Menu.Target>
+                    <Menu.Dropdown>
                   <Menu.Label>Agent Alerts ({alerts.length})</Menu.Label>
                   <ScrollArea h={300}>
                       {alerts.length === 0 ? (
-                          <Menu.Item><Text size="sm" c="dimmed">All sites look clean.</Text></Menu.Item>
+                          <Menu.Item><Text size="sm" c="dimmed">All sites look clean.</Text></Menu.Item> 
                       ) : (
                           alerts.map((alert, i) => (
                               <Menu.Item key={i} style={{ borderBottom: '1px solid #f1f3f5' }}>
@@ -289,17 +324,17 @@ function DashboardShell({ userRole, onLogout }) {
                                           <Text size="xs" c="dimmed" style={{ whiteSpace: 'normal', marginBottom: '8px' }}>
                                               {alert.message}
                                           </Text>
-                                          
+
                                           {/* AGENTIC ACTION BUTTON */}
                                           {alert.action_payload && (
-                                              <Button 
-                                                  size="xs" 
-                                                  variant="light" 
-                                                  color="violet" 
-                                                  fullWidth 
+                                              <Button
+                                                  size="xs"
+                                                  variant="light"
+                                                  color="violet"
+                                                  fullWidth
                                                   leftSection={<Sparkles size={12}/>}
                                                   onClick={(e) => {
-                                                      e.preventDefault(); 
+                                                      e.preventDefault();
                                                       setEmailDraft(alert.action_payload.body_preview);
                                                   }}
                                               >
@@ -314,18 +349,56 @@ function DashboardShell({ userRole, onLogout }) {
                   </ScrollArea>
                 </Menu.Dropdown>
               </Menu>
+              </TourStep>
 
-              <Button variant="light" color="violet" onClick={openChat} leftSection={<Sparkles size={16}/>}>
-                Ask AI
-              </Button>
+              <TourStep
+                  stepIndex={1}
+                  currentStep={tourStep}
+                  tourActive={tourActive}
+                  onNext={() => setTourStep(2)}
+                  onFinish={() => setTourActive(false)}
+                  title="AI Assistant"
+                  content="Chat with your data. Ask questions like 'Summarize site 2 Risks'."
+                  position="bottom"
+              >
+                  <Button 
+                    variant="light" 
+                    color="violet" 
+                    onClick={openChat} 
+                    leftSection={<Sparkles size={16}/>}
+                  >
+                    Ask AI
+                  </Button>
+              </TourStep>
+
 
               <Select 
                 placeholder="Select Study" data={availableStudies} value={study} onChange={setStudy}
                 searchable w={200} variant="filled" leftSection={<Search size={14} />}
               />
-              <FileButton onChange={onFileSelect} multiple accept=".csv,.xlsx">
-                {(props) => <Button {...props} loading={isUploading} leftSection={<Upload size={16}/>}>Ingest Data</Button>}
-              </FileButton>
+              
+              <TourStep
+                  stepIndex={2}
+                  currentStep={tourStep}
+                  tourActive={tourActive}
+                  onNext={() => setTourStep(3)}
+                  onFinish={() => setTourActive(false)}
+                  title="Bring Your Own Data"
+                  content="Upload new clinical trial datasets (.csv, .xlsx) here."
+                  position="bottom-end"
+              >
+                  <FileButton onChange={onFileSelect} multiple accept=".csv,.xlsx">
+                    {(props) => (
+                        <Button 
+                            {...props} 
+                            loading={isUploading} 
+                            leftSection={<Upload size={16}/>}
+                        >
+                            Ingest Data
+                        </Button>
+                    )}
+                  </FileButton>
+              </TourStep>
             </Group>
           </Group>
         </AppShell.Header>
@@ -386,21 +459,37 @@ function DashboardShell({ userRole, onLogout }) {
               
               {/* VIEW: EXECUTIVE DASHBOARD */}
               {activeView === 'overview' && userRole === 'Lead' && (
-                  <>
-                      <Title order={2} mb="lg">Clinical Operations Overview</Title>
-                      <div style={{ position: 'relative', minHeight: '200px' }}>
-                          <LoadingOverlay visible={loading} overlayProps={{ radius: "sm", blur: 2 }} />
-                          <KPIGrid kpis={metrics?.kpis} loading={loading} />
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '20px', marginTop: '20px' }}>
-                              <div style={{ minHeight: '400px' }}>
-                                  <RiskChart data={metrics?.top_risky_sites} loading={loading} />
-                              </div>
-                              <div>
-                                  <AgentPanel metrics={metrics} handleDraftEmail={handleDraftEmail} agentLoading={agentLoading} emailDraft={emailDraft} setEmailDraft={setEmailDraft} loading={loading} />
-                              </div>
-                          </div>
-                      </div>
-                  </>
+                  <div style={{ padding: '20px' }}>
+                    <TourStep
+                        stepIndex={3}
+                        currentStep={tourStep}
+                        tourActive={tourActive}
+                        onNext={() => { setTourStep(4); setTourActive(false); }}
+                        onFinish={() => setTourActive(false)}
+                        title="Clinical Operations"
+                        content="This dashboard shows real-time KPIs and risk metrics for the selected study."
+                        position="left-start"
+                        width="100%"
+                        popoverWidth={280}
+                    >
+                        <div style={{ position: 'relative' }}>
+                            <Title order={2} mb="lg">Clinical Operations Overview</Title>
+                            
+                            <div style={{ position: 'relative', minHeight: '200px' }}>
+                                <LoadingOverlay visible={loading} overlayProps={{ radius: "sm", blur: 2 }} />
+                                <KPIGrid kpis={metrics?.kpis} loading={loading} />
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '20px', marginTop: '20px' }}>
+                                    <div style={{ minHeight: '400px' }}>
+                                        <RiskChart data={metrics?.top_risky_sites} loading={loading} />
+                                    </div>
+                                    <div>
+                                        <AgentPanel metrics={metrics} handleDraftEmail={handleDraftEmail} agentLoading={agentLoading} emailDraft={emailDraft} setEmailDraft={setEmailDraft} loading={loading} />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </TourStep>
+                  </div>
               )}
 
               {/* VIEW: CRA WORKSPACE */}
