@@ -144,8 +144,14 @@ def get_dashboard_metrics(study: str = "Study 1", db: Session = Depends(get_db))
                 "components": scores
             })
         
-        # Sort by worst DQI first (Limit 5)
-        risky_sites = sorted(risky_sites, key=lambda x: x['dqi_score'])[:5]
+        # Sort by worst DQI first
+        all_sites_sorted = sorted(risky_sites, key=lambda x: x['dqi_score'])
+        
+        # Top 5 for the Risk Chart (Keep existing key for backward compatibility)
+        top_risky = all_sites_sorted[:5]
+        
+        # All sites (up to 100) for the World Map
+        map_sites = all_sites_sorted[:100]
         
         avg_study_dqi = round(sum(study_dqi_accumulator) / len(study_dqi_accumulator)) if study_dqi_accumulator else 100
 
@@ -163,6 +169,7 @@ def get_dashboard_metrics(study: str = "Study 1", db: Session = Depends(get_db))
     except Exception as e:
         print(f"DQI Error: {e}")
         avg_study_dqi, sae_count, total_missing_pages = 0, 0, 0
+        top_risky, map_sites = [], []
 
     return {
         "study_name": study,
@@ -175,7 +182,8 @@ def get_dashboard_metrics(study: str = "Study 1", db: Session = Depends(get_db))
             "critical_alerts": sae_count,          # <--- Populates "Critical Safety" Card
             "total_missing_pages": total_missing_pages # <--- Populates "Missing Data" Card
         },
-        "top_risky_sites": risky_sites
+        "top_risky_sites": top_risky,
+        "all_sites_metrics": map_sites # <--- NEW DATA FOR MAP
     }
 
 # --- KEEP EXISTING ENDPOINTS ---

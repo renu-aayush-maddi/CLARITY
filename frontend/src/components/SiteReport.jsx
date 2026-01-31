@@ -1,14 +1,15 @@
 import { useState, useEffect } from 'react';
 import { Card, Table, Badge, Button, Group, Text, Title, Select, Modal, Stack, Divider, List, ThemeIcon, Loader, Grid } from '@mantine/core';
-import { User, FileWarning, AlertTriangle, Activity } from 'lucide-react'; 
+import { User, FileWarning, AlertTriangle, Activity } from 'lucide-react';
 import api from '../api/client';
-import AISidebar from './AISidebar'; // <--- RESTORED IMPORT
+import AISidebar from './AISidebar';
+import TourStep from './GuidedTour/TourStep';
 
-export default function SiteReport({ study }) {
+export default function SiteReport({ study, tourActive, tourStep, onFinishTour }) {
     const [sites, setSites] = useState([]);
     const [selectedSite, setSelectedSite] = useState(null);
     const [subjects, setSubjects] = useState([]);
-    
+
     // PATIENT 360 STATE
     const [selectedPatient, setSelectedPatient] = useState(null);
     const [patientDetails, setPatientDetails] = useState(null);
@@ -19,17 +20,17 @@ export default function SiteReport({ study }) {
 
     // 1. Load Sites
     useEffect(() => {
-        if(!study) return;
+        if (!study) return;
         api.get(`/api/analytics/sites-list?study=${study}`).then(res => {
             setSites(res.data);
-            if(res.data.length > 0) setSelectedSite(res.data[0]);
+            if (res.data.length > 0) setSelectedSite(res.data[0]);
         });
     }, [study]);
 
     // 2. Load Subjects & Trigger AI Analysis when Site Changes
     useEffect(() => {
-        if(!selectedSite || !study) return;
-        
+        if (!selectedSite || !study) return;
+
         // Fetch Table Data
         api.get(`/api/analytics/site-details?study=${study}&site_id=${selectedSite}`).then(res => {
             setSubjects(res.data.subjects);
@@ -63,7 +64,7 @@ export default function SiteReport({ study }) {
         try {
             const res = await api.get(`/api/analytics/subject-details?study=${study}&subject_id=${subjectId}`);
             setPatientDetails(res.data);
-        } catch(e) {
+        } catch (e) {
             console.error(e);
         }
     };
@@ -75,19 +76,32 @@ export default function SiteReport({ study }) {
                     <Title order={3}>Site & Patient Drill-Down</Title>
                     <Text c="dimmed" size="sm">Deep dive into subject-level compliance & AI Risk Assessment</Text>
                 </div>
-                <Select 
-                    label="Select Site" 
-                    data={sites} 
-                    value={selectedSite} 
-                    onChange={setSelectedSite} 
-                    searchable
-                    allowDeselect={false}
-                />
+                <TourStep
+                    stepIndex={9}
+                    currentStep={tourStep}
+                    totalSteps={15}
+                    tourActive={tourActive}
+                    onNext={() => onFinishTour && onFinishTour(10)}
+                    onFinish={() => onFinishTour && onFinishTour()}
+                    title="Site Selector"
+                    content="Select a specific site to view detailed patient-level data and AI analysis."
+                    position="bottom-end"
+                    zIndex={1010}
+                >
+                    <Select
+                        label="Select Site"
+                        data={sites}
+                        value={selectedSite}
+                        onChange={setSelectedSite}
+                        searchable
+                        allowDeselect={false}
+                    />
+                </TourStep>
             </Group>
 
             {/* RESTORED GRID LAYOUT */}
             <Grid gutter="lg">
-                
+
                 {/* LEFT COL: TABLE (75%) */}
                 <Grid.Col span={{ base: 12, md: 9 }}>
                     <Card withBorder radius="md">
@@ -127,10 +141,10 @@ export default function SiteReport({ study }) {
 
                 {/* RIGHT COL: AI SIDEBAR (25%) - RESTORED */}
                 <Grid.Col span={{ base: 12, md: 3 }}>
-                    <AISidebar 
-                        siteId={selectedSite} 
-                        analysis={aiAnalysis} 
-                        loading={aiLoading} 
+                    <AISidebar
+                        siteId={selectedSite}
+                        analysis={aiAnalysis}
+                        loading={aiLoading}
                         onRefresh={fetchAIAnalysis}
                     />
                 </Grid.Col>
@@ -138,10 +152,10 @@ export default function SiteReport({ study }) {
             </Grid>
 
             {/* PATIENT 360 MODAL */}
-            <Modal 
-                opened={!!selectedPatient} 
-                onClose={() => {setSelectedPatient(null); setPatientDetails(null);}}
-                title={<Group><User size={18}/><Text fw={700}>Patient 360: {selectedPatient}</Text></Group>}
+            <Modal
+                opened={!!selectedPatient}
+                onClose={() => { setSelectedPatient(null); setPatientDetails(null); }}
+                title={<Group><User size={18} /><Text fw={700}>Patient 360: {selectedPatient}</Text></Group>}
                 size="lg"
             >
                 {patientDetails ? (
@@ -157,16 +171,16 @@ export default function SiteReport({ study }) {
                             </Card>
                         </Group>
 
-                        <Divider label="Risk Factors" labelPosition="center"/>
+                        <Divider label="Risk Factors" labelPosition="center" />
 
                         <List spacing="sm">
-                            <List.Item icon={<ThemeIcon color="red" size={20} radius="xl"><FileWarning size={12}/></ThemeIcon>}>
+                            <List.Item icon={<ThemeIcon color="red" size={20} radius="xl"><FileWarning size={12} /></ThemeIcon>}>
                                 <strong>{patientDetails.metrics?.missing_count || 0}</strong> Missing Pages
                             </List.Item>
-                            <List.Item icon={<ThemeIcon color="orange" size={20} radius="xl"><AlertTriangle size={12}/></ThemeIcon>}>
+                            <List.Item icon={<ThemeIcon color="orange" size={20} radius="xl"><AlertTriangle size={12} /></ThemeIcon>}>
                                 <strong>{patientDetails.metrics?.deviation_count || 0}</strong> Protocol Deviations
                             </List.Item>
-                            <List.Item icon={<ThemeIcon color="blue" size={20} radius="xl"><Activity size={12}/></ThemeIcon>}>
+                            <List.Item icon={<ThemeIcon color="blue" size={20} radius="xl"><Activity size={12} /></ThemeIcon>}>
                                 <strong>{patientDetails.metrics?.sae_count || 0}</strong> Safety Events
                             </List.Item>
                         </List>
@@ -174,8 +188,8 @@ export default function SiteReport({ study }) {
                         <Card bg="gray.1" radius="md">
                             <Text size="sm" fw={600}>🤖 Agent Recommendation:</Text>
                             <Text size="sm" mt={5}>
-                                {patientDetails.metrics?.missing_count > 0 
-                                    ? "Flag for immediate CRA follow-up during next monitoring visit." 
+                                {patientDetails.metrics?.missing_count > 0
+                                    ? "Flag for immediate CRA follow-up during next monitoring visit."
                                     : "No immediate actions required. Continue monitoring."}
                             </Text>
                         </Card>
