@@ -7,16 +7,18 @@ export default function TourWelcomeModal({ opened, onClose, onStartTour, onManua
             opened={opened}
             onClose={onClose}
             title={null}
+            withCloseButton={false}
             centered
             size="lg"
-            padding="xl"
+            padding={0} // Also reset padding to 0 to let Hero section fill top
             radius={24}
             overlayProps={{ opacity: 0.6, blur: 8 }}
             closeOnClickOutside={false}
             closeOnEscape={false}
             styles={{
                 content: {
-                    marginTop: '100px' // Prevent overlap with logo
+                    marginTop: '100px', // Prevent overlap with logo
+                    overflow: 'hidden'  // Ensure radius clips content
                 }
             }}
         >
