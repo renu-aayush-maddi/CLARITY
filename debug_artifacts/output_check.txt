@@ -1,0 +1,10 @@
+﻿--- CHECKING DUPLICATES IN raw_cpid_metrics ---
+Subject Study 1_Subject 80 has 111 rows in cpid_metrics
+Subject Study 1_Subject 7 has 86 rows in cpid_metrics
+Subject Study 1_Subject 83 has 81 rows in cpid_metrics
+Subject Study 1_Subject 62 has 76 rows in cpid_metrics
+Subject Study 1_Subject 78 has 75 rows in cpid_metrics
+
+--- CHECKING STATUS VALUES ---
+Unique Statuses in CPID: [None]
+Unique Statuses in SUBJECTS: ['Active']

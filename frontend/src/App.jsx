@@ -8,7 +8,7 @@ import {
 import { useDisclosure } from '@mantine/hooks';
 import {
   LayoutDashboard, Database, FileText,
-  Activity, Sparkles, BrainCircuit
+  Activity, Sparkles, BrainCircuit, Users
 } from 'lucide-react';
 
 // COMPONENTS
@@ -30,6 +30,7 @@ import HeaderControlGroup from './components/GuidedTour/HeaderControlGroup';
 import SidebarUserArea from './components/GuidedTour/SidebarUserArea';
 
 import StudyWorldMap from './components/StudyWorldMap'; // <--- NEW MAP COMPONENT
+import SubjectOverview from './components/SubjectOverview'; // <--- NEW SUBJECT OVERVIEW
 
 import api from "./api/client"
 
@@ -378,6 +379,15 @@ function DashboardShell({ userRole, setUserRole, onLogout, tourActive, setTourAc
 
                 </div>
 
+                <div style={{ position: 'relative' }}>
+                  <NavLink
+                    icon={Users}
+                    label="Subject Overview"
+                    active={activeView === 'subject_overview'}
+                    onClick={() => setActiveView('subject_overview')}
+                  />
+                </div>
+
                 <NavLink
                   icon={BrainCircuit}
                   label="AI Cortex"
@@ -461,8 +471,13 @@ function DashboardShell({ userRole, setUserRole, onLogout, tourActive, setTourAc
               </div>
             )}
 
+            {/* VIEW: SUBJECT OVERVIEW */}
+            {activeView === 'subject_overview' && (
+              <SubjectOverview study={study} />
+            )}
+
             {/* VIEW: CRA WORKSPACE */}
-            {(activeView === 'cra_worklist' || (userRole === 'CRA' && activeView !== 'reports')) && (
+            {(activeView === 'cra_worklist' || (userRole === 'CRA' && activeView !== 'reports' && activeView !== 'sources')) && (
               <CRAWorkspace
                 study={study}
                 handleDraftEmail={handleDraftEmail}

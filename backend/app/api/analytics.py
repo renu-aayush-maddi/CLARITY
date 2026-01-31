@@ -224,6 +224,100 @@ def get_study_list(db: Session = Depends(get_db)):
     return [row[0] for row in results if row[0]]
 
 
+@router.get("/analytics/subject-overview")
+def get_subject_overview(study: str, db: Session = Depends(get_db)):
+    """
+    Returns aggregated metrics for the Subject Overview page.
+    """
+    # 1. Total Subjects & Status Breakdown (Source: CPID Metrics > Subjects > Inactivated Rules)
+    status_sql = text("""
+        SELECT 
+            CASE 
+                WHEN i.subject_id IS NOT NULL THEN 'Inactive'
+                ELSE COALESCE(NULLIF(c.subject_status, ''), NULLIF(s.status, ''), 'Active') 
+            END as final_status, 
+            COUNT(DISTINCT s.subject_id)
+        FROM subjects s
+        LEFT JOIN raw_cpid_metrics c ON s.subject_id = c.subject_id
+        LEFT JOIN (SELECT DISTINCT subject_id FROM raw_inactivated_forms) i ON s.subject_id = i.subject_id
+        WHERE s.study_name = :study 
+        GROUP BY final_status
+        ORDER BY final_status
+    """)
+    status_results = db.execute(status_sql, {"study": study}).fetchall()
+    
+    total_subjects = sum(row[1] for row in status_results)
+    status_breakdown = {row[0]: row[1] for row in status_results}
+
+    # 2. Risk Evaluation (Based on CPID Metrics)
+    # We categorize risk based on missing pages + open queries + deviations
+    risk_sql = text("""
+        SELECT 
+            CASE 
+                WHEN (missing_pages + open_queries + protocol_deviations) = 0 THEN 'Low'
+                WHEN (missing_pages + open_queries + protocol_deviations) <= 5 THEN 'Medium'
+                ELSE 'High'
+            END as risk_level,
+            COUNT(*)
+        FROM raw_cpid_metrics
+        WHERE study_name = :study
+        GROUP BY risk_level
+    """)
+    risk_results = db.execute(risk_sql, {"study": study}).fetchall()
+    risk_breakdown = {row[0]: row[1] for row in risk_results}
+
+    # 3. Top Deviations Categories
+    dev_sql = text("""
+        SELECT category, COUNT(*) as count
+        FROM raw_protocol_deviations
+        WHERE study_name = :study
+        GROUP BY category
+        ORDER BY count DESC
+        LIMIT 5
+    """)
+    dev_results = db.execute(dev_sql, {"study": study}).fetchall()
+    top_deviations = [{"category": row[0], "count": row[1]} for row in dev_results]
+
+    # 4. Site-wise Subject Breakdown (Joined with actual status & Deduplicated)
+    site_sql = text("""
+        SELECT DISTINCT ON (s.subject_id) 
+            s.site_id, 
+            s.subject_id, 
+            CASE 
+                WHEN i.subject_id IS NOT NULL THEN 'Inactive'
+                ELSE COALESCE(NULLIF(c.subject_status, ''), NULLIF(s.status, ''), 'Active') 
+            END as real_status
+        FROM subjects s
+        LEFT JOIN raw_cpid_metrics c ON s.subject_id = c.subject_id
+        LEFT JOIN (SELECT DISTINCT subject_id FROM raw_inactivated_forms) i ON s.subject_id = i.subject_id
+        WHERE s.study_name = :study
+        ORDER BY s.subject_id, s.site_id
+    """)
+    site_rows = db.execute(site_sql, {"study": study}).fetchall()
+    
+    sites_map = {}
+    for row in site_rows:
+        site_id = row[0] or "Unassigned"
+        if site_id not in sites_map:
+            sites_map[site_id] = []
+        sites_map[site_id].append({"subject_id": row[1], "status": row[2]})
+        
+    site_breakdown = [
+        {"site_id": s, "subjects": subs, "subject_count": len(subs)}
+        for s, subs in sites_map.items()
+    ]
+    site_breakdown.sort(key=lambda x: x['site_id'])
+
+    return {
+        "study": study,
+        "total_subjects": total_subjects,
+        "status_distribution": status_breakdown,
+        "risk_distribution": risk_breakdown,
+        "top_deviations": top_deviations,
+        "site_breakdown": site_breakdown
+    }
+
+
 # backend/app/api/analytics.py (Add to bottom)
 
 @router.get("/analytics/subject-details")
