@@ -16,7 +16,7 @@ app = FastAPI()
 origins = [
     "http://localhost:5173",  # React (Vite) default port
     "http://localhost:3000",  # React (Create-React-App) default port
-    "https://novartis-with-clarity.netlify.app/",
+    "https://novartis-with-clarity.netlify.app",
 ]
 
 app.add_middleware(
