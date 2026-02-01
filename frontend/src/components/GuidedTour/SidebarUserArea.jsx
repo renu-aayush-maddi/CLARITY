@@ -16,10 +16,10 @@ export default function SidebarUserArea({
         <Group justify="space-between">
             <Group gap="sm">
                 <Avatar color={userRole === 'Lead' ? 'blue' : 'orange'} radius="xl">
-                    {userRole === 'Lead' ? 'DR' : 'JD'}
+                    {userRole === 'Lead' ? 'DA' : 'DS'}
                 </Avatar>
                 <div style={{ flex: 1 }}>
-                    <Text size="sm" fw={500}>{userRole === 'Lead' ? 'Dr. Roe' : 'Jane Doe'}</Text>
+                    <Text size="sm" fw={500}>{userRole === 'Lead' ? 'Dr. Abishek' : 'Dr. Shreance'}</Text>
                     <Text c="dimmed" size="xs">{userRole === 'Lead' ? 'Global Lead' : 'Site Monitor'}</Text>
                 </div>
             </Group>
@@ -38,7 +38,7 @@ export default function SidebarUserArea({
                     title="Switch Roles"
                     content="Click the logout button below or click Next to explore the CRA (Site Monitor) perspective."
                     position="top"
-                    popoverWidth={320}
+                    popoverWidth={360}
                     zIndex={1010}
                     usePortal={true}
                     noHighlight={false}

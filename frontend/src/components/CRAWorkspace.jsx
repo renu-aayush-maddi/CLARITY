@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
     Paper, Title, Text, Group, Button, Grid, Badge,
-    Card, Progress, Tabs, ThemeIcon, Alert, ScrollArea, LoadingOverlay
+    Card, Progress, Tabs, ThemeIcon, Alert, ScrollArea, LoadingOverlay, Tooltip
 } from '@mantine/core';
 import {
     ClipboardList, CheckCircle, AlertCircle,
@@ -10,7 +10,7 @@ import {
 import api from "../api/client";
 import TourStep from './GuidedTour/TourStep';
 
-export default function CRAWorkspace({ study, handleDraftEmail, onViewSite, tourActive, tourStep, onFinishTour }) {
+export default function CRAWorkspace({ study, metrics, handleDraftEmail, onViewSite, tourActive, tourStep, onFinishTour }) {
     const [activeTab, setActiveTab] = useState('tasks');
     const [mySites, setMySites] = useState([]);
     const [clusters, setClusters] = useState([]);
@@ -67,8 +67,10 @@ export default function CRAWorkspace({ study, handleDraftEmail, onViewSite, tour
                             <Text c="dimmed">Focusing on your <span style={{ color: '#fa5252', fontWeight: 700 }}>{mySites.length} assigned sites</span>.</Text>
                         </div>
                         <Paper withBorder p="xs" px="md" radius="md">
-                            <Text size="xs" c="dimmed" tt="uppercase" fw={700}>Compliance Score</Text>
-                            <Text fw={700} size="xl" c="blue">94%</Text>
+                            <Tooltip label="Percentage of subjects with zero missing pages or protocol deviations." withArrow>
+                                <Text size="xs" c="dimmed" tt="uppercase" fw={700} style={{ cursor: 'help', borderBottom: '1px dotted #909296', width: 'fit-content' }}>Compliance Score</Text>
+                            </Tooltip>
+                            <Text fw={700} size="xl" c="blue">{metrics?.kpis?.clean_patient_rate || 0}%</Text>
                         </Paper>
                     </Group>
                 </TourStep>
@@ -79,8 +81,10 @@ export default function CRAWorkspace({ study, handleDraftEmail, onViewSite, tour
                         <Text c="dimmed">Focusing on your <span style={{ color: '#fa5252', fontWeight: 700 }}>{mySites.length} assigned sites</span>.</Text>
                     </div>
                     <Paper withBorder p="xs" px="md" radius="md">
-                        <Text size="xs" c="dimmed" tt="uppercase" fw={700}>Compliance Score</Text>
-                        <Text fw={700} size="xl" c="blue">94%</Text>
+                        <Tooltip label="Percentage of subjects with zero missing pages or protocol deviations." withArrow>
+                            <Text size="xs" c="dimmed" tt="uppercase" fw={700} style={{ cursor: 'help', borderBottom: '1px dotted #909296', width: 'fit-content' }}>Compliance Score</Text>
+                        </Tooltip>
+                        <Text fw={700} size="xl" c="blue">{metrics?.kpis?.clean_patient_rate || 0}%</Text>
                     </Paper>
                 </Group>
             )}

@@ -86,6 +86,7 @@ export default function SiteReport({ study, tourActive, tourStep, onFinishTour }
                     title="Site Selector"
                     content="Select a specific site to view detailed patient-level data and AI analysis."
                     position="bottom-end"
+                    popoverWidth={360}
                     zIndex={1010}
                 >
                     <Select

@@ -28,7 +28,7 @@ export default function TourSidebarAnchors({
                     title="Global Portfolio"
                     content="View high-level health metrics across all studies in your organization."
                     position="right-end"
-                    popoverWidth={320}
+                    popoverWidth={360}
                     zIndex={1010}
                     usePortal={true}
                     noHighlight={true}
@@ -53,7 +53,7 @@ export default function TourSidebarAnchors({
                     title="Clinical Operations"
                     content="This dashboard shows real-time KPIs and risk metrics for the selected study."
                     position="right-end"
-                    popoverWidth={300}
+                    popoverWidth={360}
                     zIndex={1010}
                     usePortal={true}
                     noHighlight={true}
@@ -75,7 +75,7 @@ export default function TourSidebarAnchors({
                     title="AI Cortex"
                     content="Explore model performance, bias checks, and AI governance tools."
                     position="right-end"
-                    popoverWidth={340}
+                    popoverWidth={360}
                     zIndex={1010}
                     usePortal={true}
                     noHighlight={true}
@@ -98,7 +98,7 @@ export default function TourSidebarAnchors({
                     title="Data Sources"
                     content="Manage and connect data sources for ingestion and transformations."
                     position="right-end"
-                    popoverWidth={340}
+                    popoverWidth={360}
                     zIndex={1010}
                     usePortal={true}
                     noHighlight={true}
@@ -120,7 +120,7 @@ export default function TourSidebarAnchors({
                     title="Site Reports"
                     content="Open detailed site-level reports and findings."
                     position="right-end"
-                    popoverWidth={340}
+                    popoverWidth={360}
                     zIndex={1010}
                     usePortal={true}
                     noHighlight={true}

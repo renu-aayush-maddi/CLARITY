@@ -111,6 +111,7 @@ export default function HeaderControlGroup({
             <Select
                 placeholder="Select Study" data={availableStudies} value={study} onChange={setStudy}
                 searchable w={200} variant="filled" leftSection={<Search size={14} />}
+                comboboxProps={{ zIndex: 10001 }}
             />
 
             {/* Step 3: Ingest Data */}
