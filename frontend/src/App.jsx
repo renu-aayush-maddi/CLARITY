@@ -480,6 +480,7 @@ function DashboardShell({ userRole, setUserRole, onLogout, tourActive, setTourAc
             {(activeView === 'cra_worklist' || (userRole === 'CRA' && activeView !== 'reports' && activeView !== 'sources')) && (
               <CRAWorkspace
                 study={study}
+                metrics={metrics}
                 handleDraftEmail={handleDraftEmail}
                 onViewSite={handleViewSite}
                 tourActive={tourActive}

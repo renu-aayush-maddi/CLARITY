@@ -108,12 +108,10 @@ export default function LandingPage({ onSelectRole, onStartTour, tourActive, tou
                             setTourStep(12);
                             onSelectRole('CRA');
                         }}
-                        onBack={() => setTourStep(10)}
                         onFinish={() => onStartTour && onStartTour(false)}
                         title="CRA Role"
                         content="Click the Site Monitor card below or click Next to enter the CRA workspace."
                         position="right"
-                        noFlip={true}
                         popoverWidth={260}
                         zIndex={1010}
                         width="100%"

@@ -49,7 +49,6 @@ export default function TourStep({
       position={position}
       withArrow={withArrow}
       shadow="xl"
-      width={popoverWidth}
       zIndex={zIndex}
       withinPortal={usePortal}
       offset={16}
@@ -75,7 +74,7 @@ export default function TourStep({
         </div>
       </Popover.Target>
 
-      <Popover.Dropdown style={{ padding: 0, border: 'none', background: 'transparent', maxWidth: '90vw' }}>
+      <Popover.Dropdown style={{ padding: 0, border: 'none', background: 'transparent', maxWidth: '100vw' }}>
         <Paper
           radius="md"
           shadow="xl"
@@ -83,7 +82,9 @@ export default function TourStep({
             overflow: 'hidden',
             border: 'none',
             backgroundColor: 'white',
-            borderRadius: '16px'
+            borderRadius: '16px',
+            width: popoverWidth,
+            maxWidth: 'calc(100vw - 32px)'
           }}
         >
 
